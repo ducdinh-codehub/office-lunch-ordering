@@ -1,0 +1,238 @@
+import { Fragment } from "react";
+import { notFound } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
+
+import { LinkButton } from "@/components/ui/link-button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CopyKitchenList } from "@/components/admin/copy-kitchen-list";
+import {
+  getDayBookingsByPerson,
+  getDayOrdersByPerson,
+  getKitchenSummary,
+} from "@/db/queries/bookings";
+import { getMenuDay } from "@/db/queries/menu";
+import { formatServiceDate, isServiceDate } from "@/lib/date";
+import { formatVnd } from "@/lib/money";
+import type { MenuItemCategory } from "@/db/schema";
+
+export const dynamic = "force-dynamic";
+
+const SECTIONS = [
+  { category: "main", label: "Món chính" },
+  { category: "side", label: "Món phụ" },
+  { category: "veg", label: "Món rau" },
+  { category: "addon", label: "Gọi thêm" },
+  { category: "drink", label: "Đồ uống" },
+] as const satisfies ReadonlyArray<{ category: MenuItemCategory; label: string }>;
+
+export default async function AdminDayBookingsPage({
+  params,
+}: {
+  params: Promise<{ date: string }>;
+}) {
+  const { date } = await params;
+  if (!isServiceDate(date)) notFound();
+
+  const [kitchen, people, setOrders, day] = await Promise.all([
+    getKitchenSummary(date),
+    getDayBookingsByPerson(date),
+    getDayOrdersByPerson(date),
+    getMenuDay(date),
+  ]);
+
+  const shipFeeVnd = day?.shipFeeVnd ?? 0;
+
+  const ordered = kitchen.filter((line) => line.totalQuantity > 0);
+
+  // Set dishes are covered by the suất price; only add-ons and drinks are billed
+  // per portion, so the day's money is sets + paid lines.
+  const setTotalVnd = setOrders.reduce((total, order) => total + order.setPriceVnd, 0);
+  const paidTotalVnd = ordered
+    .filter((line) => line.category === "addon" || line.category === "drink")
+    .reduce((total, line) => total + line.totalQuantity * line.priceVnd, 0);
+  // The quán charges the delivery once for the whole order, not per person.
+  const totalVnd = setTotalVnd + paidTotalVnd + shipFeeVnd;
+
+  const totalDishes = ordered.reduce((total, line) => total + line.totalQuantity, 0);
+  // Everyone with a complete set, plus anyone who only ordered à-la-carte.
+  const headcount = new Set([
+    ...setOrders.map((order) => order.userId),
+    ...people.map((person) => person.userId),
+  ]).size;
+
+  const linesFor = (categories: MenuItemCategory[]) =>
+    ordered.filter((line) => categories.includes(line.category));
+
+  // What gets pasted into the chat with the quán.
+  const kitchenText = [
+    `Đơn cơm trưa — ${formatServiceDate(date)}`,
+    `${setOrders.length} suất`,
+    ...SECTIONS.flatMap(({ category, label }) => {
+      const lines = linesFor([category]);
+      if (lines.length === 0) return [];
+      return [``, `${label}:`, ...lines.map((line) => `${line.totalQuantity}x ${line.itemName}`)];
+    }),
+    ``,
+    ...(shipFeeVnd > 0 ? [`Phí ship: ${formatVnd(shipFeeVnd)}`] : []),
+    `Tổng: ${formatVnd(totalVnd)}`,
+  ].join("\n");
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Danh sách bếp</h1>
+          <p className="text-muted-foreground text-sm">{formatServiceDate(date)}</p>
+        </div>
+        <LinkButton href={`/admin/menu?date=${date}`} variant="outline" size="sm">
+          <ChevronLeft className="size-4" />
+          Sửa thực đơn
+        </LinkButton>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Số suất", value: String(setOrders.length) },
+          { label: "Số người", value: String(headcount) },
+          { label: "Số món", value: String(totalDishes) },
+          { label: "Tổng tiền", value: formatVnd(totalVnd) },
+        ].map((stat) => (
+          <Card key={stat.label}>
+            <CardContent className="py-4 text-center">
+              <p className="text-muted-foreground text-xs">{stat.label}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums">{stat.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base">Đơn gửi quán</CardTitle>
+            {ordered.length > 0 && <CopyKitchenList text={kitchenText} />}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {ordered.length === 0 ? (
+            <p className="text-muted-foreground py-4 text-center text-sm">
+              Chưa ai đặt món cho ngày này.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Món</TableHead>
+                  <TableHead className="text-right">SL</TableHead>
+                  <TableHead className="text-right">Thành tiền</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {SECTIONS.map(({ category, label }) => {
+                  const lines = linesFor([category]);
+                  if (lines.length === 0) return null;
+                  const isSet = category === "main" || category === "side" || category === "veg";
+                  return (
+                    <Fragment key={category}>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableCell colSpan={3} className="text-muted-foreground text-xs font-medium">
+                          {label}
+                        </TableCell>
+                      </TableRow>
+                      {lines.map((line) => (
+                        <TableRow key={line.menuItemId}>
+                          <TableCell className="font-medium">{line.itemName}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {line.totalQuantity}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-right tabular-nums">
+                            {isSet ? "theo suất" : formatVnd(line.totalQuantity * line.priceVnd)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
+                  );
+                })}
+                <TableRow>
+                  <TableCell className="font-medium">Suất cơm</TableCell>
+                  <TableCell className="text-right tabular-nums">{setOrders.length}</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    {formatVnd(setTotalVnd)}
+                  </TableCell>
+                </TableRow>
+                {shipFeeVnd > 0 && (
+                  <TableRow>
+                    <TableCell className="font-medium">
+                      Phí ship
+                      <span className="text-muted-foreground text-xs">
+                        {" "}
+                        (chia đều {setOrders.length > 0 ? `${setOrders.length} người` : ""})
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">—</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatVnd(shipFeeVnd)}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {people.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Ai đặt món gì</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Người đặt</TableHead>
+                  <TableHead>Món</TableHead>
+                  <TableHead className="text-right">SL</TableHead>
+                  <TableHead className="text-right">Số tiền</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {people.map((person, index) => (
+                  <TableRow key={`${person.userId}-${person.itemName}-${index}`}>
+                    <TableCell>
+                      <span className="font-medium">
+                        {person.displayName ?? person.email.split("@")[0]}
+                      </span>
+                      {person.note && (
+                        <span className="text-muted-foreground block text-xs">
+                          {person.note}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>{person.itemName}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {person.quantity}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-right tabular-nums">
+                      {person.category === "addon" || person.category === "drink"
+                        ? formatVnd(person.quantity * person.unitPriceVnd)
+                        : "theo suất"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+!.env.local.example
+
+# local dev database (scripts/local-db.sh)
+.localdb/
+.clerk/
+
+# signing keystore (local only)
+.key/
