@@ -5,10 +5,10 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { bookings, menuDays, menuItems } from "@/db/schema";
+import { bookings, menuDays, menuItems, users } from "@/db/schema";
 import { isBookingOpen, bookingClosedReason } from "@/db/queries/menu";
 import { getSetSelectionCounts, syncDayOrder } from "@/db/queries/bookings";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getCurrentUser, type SessionUser } from "@/lib/auth/session";
 import {
   actionOk,
   fail,
@@ -18,12 +18,15 @@ import {
 
 const bookSchema = z.object({
   menuItemId: z.string().uuid(),
+  /** Admin ordering for someone else; absent means "for myself". */
+  onBehalfOf: z.string().uuid().optional(),
   quantity: z.number().int().min(0).max(10),
   note: z.string().trim().max(200).optional(),
 });
 
 const toggleSchema = z.object({
   menuItemId: z.string().uuid(),
+  onBehalfOf: z.string().uuid().optional(),
   selected: z.boolean(),
 });
 
@@ -32,6 +35,29 @@ const CATEGORY_LABEL = {
   side: "món phụ",
   veg: "món rau",
 } as const;
+
+/**
+ * Who this booking is for.
+ *
+ * An admin may order on someone else's behalf — the colleague who asked in
+ * person, or the one who missed the cutoff. Everyone else may only ever book
+ * for themselves, so an `onBehalfOf` from a non-admin is refused rather than
+ * ignored. The override also lifts the cutoff: booking late on someone's behalf
+ * is the whole reason the admin is doing it by hand.
+ */
+async function resolveDiner(
+  actor: SessionUser,
+  onBehalfOf: string | undefined,
+): Promise<{ userId: string; overrideCutoff: boolean }> {
+  if (!onBehalfOf || onBehalfOf === actor.id) {
+    return { userId: actor.id, overrideCutoff: false };
+  }
+  if (!actor.isAdmin) fail("Bạn không có quyền đặt món cho người khác.");
+
+  const target = await db.query.users.findFirst({ where: eq(users.id, onBehalfOf) });
+  if (!target) fail("Không tìm thấy người này.");
+  return { userId: target.id, overrideCutoff: true };
+}
 
 /** The dish plus the day it belongs to — every rule-check input in one row. */
 async function loadItem(menuItemId: string) {
@@ -75,14 +101,15 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
     const user = await getCurrentUser();
     if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
 
-    const { menuItemId, selected } = toggleSchema.parse(input);
+    const { menuItemId, selected, onBehalfOf } = toggleSchema.parse(input);
+    const diner = await resolveDiner(user, onBehalfOf);
 
     const item = await loadItem(menuItemId);
     if (!item) fail("Món này không còn trong thực đơn.");
     if (item.category === "addon" || item.category === "drink") {
       fail("Món này được tính tiền riêng, không nằm trong suất.");
     }
-    if (!isBookingOpen(item)) {
+    if (!diner.overrideCutoff && !isBookingOpen(item)) {
       fail(bookingClosedReason(item) ?? "Ngày này đã đóng đặt món.");
     }
     if (!item.isAvailable && selected) fail("Món này đã hết.");
@@ -90,7 +117,7 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
     if (selected) {
       // Enforce the per-category limit here: the UI's disabled checkbox is only
       // a hint, and two tabs can race past it.
-      const counts = await getSetSelectionCounts(user.id, item.menuDayId);
+      const counts = await getSetSelectionCounts(diner.userId, item.menuDayId);
       const allowed = {
         main: item.requiredMain,
         side: item.requiredSide,
@@ -106,7 +133,7 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
       await db
         .insert(bookings)
         .values({
-          userId: user.id,
+          userId: diner.userId,
           menuDayId: item.menuDayId,
           menuItemId: item.id,
           quantity: 1,
@@ -121,10 +148,10 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
     } else {
       await db
         .delete(bookings)
-        .where(and(eq(bookings.userId, user.id), eq(bookings.menuItemId, menuItemId)));
+        .where(and(eq(bookings.userId, diner.userId), eq(bookings.menuItemId, menuItemId)));
     }
 
-    await syncDayOrder(user.id, item.menuDayId);
+    await syncDayOrder(diner.userId, item.menuDayId);
 
     revalidateFor(item.serviceDate);
     return actionOk();
@@ -145,7 +172,8 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
     const user = await getCurrentUser();
     if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
 
-    const { menuItemId, quantity, note } = bookSchema.parse(input);
+    const { menuItemId, quantity, note, onBehalfOf } = bookSchema.parse(input);
+    const diner = await resolveDiner(user, onBehalfOf);
 
     const item = await loadItem(menuItemId);
 
@@ -153,7 +181,7 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
     if (item.category !== "addon" && item.category !== "drink") {
       fail("Món này thuộc suất — hãy chọn ở phần bên trên.");
     }
-    if (!isBookingOpen(item)) {
+    if (!diner.overrideCutoff && !isBookingOpen(item)) {
       fail(bookingClosedReason(item) ?? "Ngày này đã đóng đặt món.");
     }
     if (!item.isAvailable && quantity > 0) fail("Món này đã hết.");
@@ -164,7 +192,7 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
     if (item.category === "addon" && quantity > 0) {
       const dayHasSet = item.requiredMain + item.requiredSide + item.requiredVeg > 0;
       if (dayHasSet) {
-        const counts = await getSetSelectionCounts(user.id, item.menuDayId);
+        const counts = await getSetSelectionCounts(diner.userId, item.menuDayId);
         const setComplete =
           counts.main === item.requiredMain &&
           counts.side === item.requiredSide &&
@@ -176,12 +204,12 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
     if (quantity === 0) {
       await db
         .delete(bookings)
-        .where(and(eq(bookings.userId, user.id), eq(bookings.menuItemId, menuItemId)));
+        .where(and(eq(bookings.userId, diner.userId), eq(bookings.menuItemId, menuItemId)));
     } else {
       await db
         .insert(bookings)
         .values({
-          userId: user.id,
+          userId: diner.userId,
           menuDayId: item.menuDayId,
           menuItemId: item.id,
           quantity,

@@ -13,12 +13,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CopyKitchenList } from "@/components/admin/copy-kitchen-list";
+import { OrderForUser } from "@/components/admin/order-for-user";
+import { MenuDayView } from "@/components/menu/menu-day-view";
 import {
   getDayBookingsByPerson,
   getDayOrdersByPerson,
   getKitchenSummary,
 } from "@/db/queries/bookings";
 import { getMenuDay } from "@/db/queries/menu";
+import { getAllDiners } from "@/db/queries/users";
 import {
   formatServiceDate,
   formatServiceDateShort,
@@ -41,20 +44,26 @@ const SECTIONS = [
 
 export default async function AdminDayBookingsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ date: string }>;
+  searchParams: Promise<{ for?: string }>;
 }) {
   const { date } = await params;
   if (!isServiceDate(date)) notFound();
 
+  const { for: forUserId } = await searchParams;
   const today = todayServiceDate();
 
-  const [kitchen, people, setOrders, day] = await Promise.all([
+  const [kitchen, people, setOrders, day, diners] = await Promise.all([
     getKitchenSummary(date),
     getDayBookingsByPerson(date),
     getDayOrdersByPerson(date),
     getMenuDay(date),
+    getAllDiners(),
   ]);
+
+  const orderingFor = diners.find((diner) => diner.id === forUserId) ?? null;
 
   const shipFeeVnd = day?.shipFeeVnd ?? 0;
 
@@ -139,6 +148,31 @@ export default async function AdminDayBookingsPage({
           );
         })}
       </div>
+
+      <OrderForUser
+        serviceDate={date}
+        users={diners}
+        selectedUserId={orderingFor?.id ?? null}
+      >
+        {orderingFor && (
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-sm">
+              Đang chọn món cho{" "}
+              <span className="text-foreground font-medium">{orderingFor.name}</span>{" "}
+              <span className="text-xs">({orderingFor.email})</span>. Mọi thay đổi lưu
+              ngay, kể cả khi đã quá giờ chốt.
+            </p>
+            {/* Keyed so switching person remounts every optimistic row. */}
+            <MenuDayView
+              key={orderingFor.id}
+              serviceDate={date}
+              day={day}
+              userId={orderingFor.id}
+              onBehalfOf={orderingFor.id}
+            />
+          </div>
+        )}
+      </OrderForUser>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -255,6 +289,9 @@ export default async function AdminDayBookingsPage({
                     <TableCell>
                       <span className="font-medium">
                         {person.displayName ?? person.email.split("@")[0]}
+                      </span>
+                      <span className="text-muted-foreground block text-xs">
+                        {person.email}
                       </span>
                       {person.note && (
                         <span className="text-muted-foreground block text-xs">

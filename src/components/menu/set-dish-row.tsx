@@ -19,6 +19,8 @@ export type SetDishRowProps = {
   /** False once the category's quota is full and this dish isn't one of the picks. */
   canSelect: boolean;
   canBook: boolean;
+  /** Set when an admin is picking for someone else. */
+  onBehalfOf?: string;
 };
 
 /**
@@ -26,7 +28,13 @@ export type SetDishRowProps = {
  * either taken or it isn't, and nobody orders two of the same dish inside one
  * suất.
  */
-export function SetDishRow({ item, selected, canSelect, canBook }: SetDishRowProps) {
+export function SetDishRow({
+  item,
+  selected,
+  canSelect,
+  canBook,
+  onBehalfOf,
+}: SetDishRowProps) {
   // Optimistic local state so ticking feels instant; reconciled by revalidation.
   const [checked, setChecked] = useState(selected);
   const [isPending, startTransition] = useTransition();
@@ -40,7 +48,11 @@ export function SetDishRow({ item, selected, canSelect, canBook }: SetDishRowPro
     setChecked(next);
 
     startTransition(async () => {
-      const result = await toggleSetDish({ menuItemId: item.id, selected: next });
+      const result = await toggleSetDish({
+        menuItemId: item.id,
+        selected: next,
+        onBehalfOf,
+      });
       if (!result.ok) {
         setChecked(!next);
         toast.error(result.error);

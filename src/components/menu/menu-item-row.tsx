@@ -19,9 +19,11 @@ export type MenuItemRowProps = {
   };
   quantity: number;
   canBook: boolean;
+  /** Set when an admin is ordering for someone else. */
+  onBehalfOf?: string;
 };
 
-export function MenuItemRow({ item, quantity, canBook }: MenuItemRowProps) {
+export function MenuItemRow({ item, quantity, canBook, onBehalfOf }: MenuItemRowProps) {
   // Optimistic local count so tapping +/- feels instant; reconciled by revalidation.
   const [count, setCount] = useState(quantity);
   const [isPending, startTransition] = useTransition();
@@ -33,7 +35,11 @@ export function MenuItemRow({ item, quantity, canBook }: MenuItemRowProps) {
     setCount(next);
 
     startTransition(async () => {
-      const result = await setBooking({ menuItemId: item.id, quantity: next });
+      const result = await setBooking({
+        menuItemId: item.id,
+        quantity: next,
+        onBehalfOf,
+      });
       if (!result.ok) {
         setCount(previous);
         toast.error(result.error);

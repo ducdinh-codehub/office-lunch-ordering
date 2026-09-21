@@ -27,10 +27,17 @@ export async function MenuDayView({
   serviceDate,
   day,
   userId,
+  onBehalfOf,
 }: {
   serviceDate: ServiceDate;
   day: MenuDayWithItems | null;
   userId: string;
+  /**
+   * Set when an admin is ordering for this person. It rides along to the
+   * actions, which re-check the caller is an admin, and it lifts the cutoff —
+   * ordering late by hand is the point of the override.
+   */
+  onBehalfOf?: string;
 }) {
   const [myBookings, lockedSetPrice, shipShares] = await Promise.all([
     getUserBookingsForDay(userId, serviceDate),
@@ -44,7 +51,7 @@ export async function MenuDayView({
   const quantityByItem = new Map(myBookings.map((b) => [b.menuItemId, b.quantity]));
   const paidTotal = myBookings.reduce((total, b) => total + b.lineTotalVnd, 0);
 
-  const canBook = day ? isBookingOpen(day) : false;
+  const canBook = day ? isBookingOpen(day) || Boolean(onBehalfOf) : false;
   const closedReason = bookingClosedReason(day);
 
   if (!day || day.status === "draft") {
@@ -206,6 +213,7 @@ export async function MenuDayView({
                       selected={quantityByItem.has(item.id)}
                       canSelect={!full}
                       canBook={canBook}
+                      onBehalfOf={onBehalfOf}
                     />
                   ))}
                 </MenuSection>
@@ -254,6 +262,7 @@ export async function MenuDayView({
                   item={item}
                   quantity={quantityByItem.get(item.id) ?? 0}
                   canBook={canBook}
+                  onBehalfOf={onBehalfOf}
                 />
               ))}
             </MenuSection>
