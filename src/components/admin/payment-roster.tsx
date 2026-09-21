@@ -2,13 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Check, Loader2, Undo2 } from "lucide-react";
+import { Check, Loader2, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { markPaidByAdmin, unmarkPaid } from "@/app/(app)/admin/payments/actions";
+import {
+  deleteDayOrder,
+  markPaidByAdmin,
+  unmarkPaid,
+} from "@/app/(app)/admin/payments/actions";
 import { formatServiceDateShort } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import type { PaymentState } from "@/db/queries/payments";
@@ -58,6 +62,34 @@ export function PaymentRoster({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
+  // Cells are small and deletion is permanent, so the first tap only arms the
+  // cell; the second one deletes. Anything else disarms it.
+  const [armed, setArmed] = useState<string | null>(null);
+
+  function cellKey(userId: string, date: string) {
+    return `${userId}:${date}`;
+  }
+
+  function handleCellClick(row: RosterRowData, date: string) {
+    const key = cellKey(row.userId, date);
+    if (armed !== key) {
+      setArmed(key);
+      return;
+    }
+
+    setArmed(null);
+    setActiveUserId(row.userId);
+    startTransition(async () => {
+      const result = await deleteDayOrder({ userId: row.userId, serviceDate: date });
+      if (result.ok) {
+        toast.success(`Đã xoá đơn ngày ${formatServiceDateShort(date)}.`);
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+      setActiveUserId(null);
+    });
+  }
 
   function settleAll(row: RosterRowData) {
     const unsettled = dates.filter((date) => {
@@ -164,12 +196,28 @@ export function PaymentRoster({
                       return (
                         <td key={date} className="px-1 py-1.5 text-center">
                           {cell ? (
-                            <span
-                              title={`${formatVnd(cell.owedVnd)} · ${stateLabel[cell.state]}`}
-                              className={`inline-flex h-7 min-w-9 items-center justify-center rounded px-1.5 text-xs font-medium ${cellStyle[cell.state]}`}
+                            <button
+                              type="button"
+                              disabled={isPending}
+                              onClick={() => handleCellClick(row, date)}
+                              onBlur={() => setArmed(null)}
+                              title={
+                                armed === cellKey(row.userId, date)
+                                  ? "Bấm lần nữa để xoá đơn ngày này"
+                                  : `${formatVnd(cell.owedVnd)} · ${stateLabel[cell.state]}`
+                              }
+                              className={`inline-flex h-7 min-w-9 items-center justify-center rounded px-1.5 text-xs font-medium transition-colors ${
+                                armed === cellKey(row.userId, date)
+                                  ? "bg-destructive text-white"
+                                  : cellStyle[cell.state]
+                              }`}
                             >
-                              {cellMark[cell.state]}
-                            </span>
+                              {armed === cellKey(row.userId, date) ? (
+                                <Trash2 className="size-3.5" />
+                              ) : (
+                                cellMark[cell.state]
+                              )}
+                            </button>
                           ) : (
                             <span className="text-muted-foreground/40 text-xs">·</span>
                           )}

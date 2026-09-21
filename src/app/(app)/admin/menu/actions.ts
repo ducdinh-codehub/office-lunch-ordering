@@ -14,6 +14,7 @@ import {
 import { getCurrentUser } from "@/lib/auth/session";
 import { localInputToInstant } from "@/lib/date";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
+import { parseMenuText } from "@/lib/menu-import";
 
 async function assertAdmin() {
   const user = await getCurrentUser();
@@ -285,5 +286,70 @@ export async function copyPreviousMenu(input: unknown): Promise<ActionResult<{ c
     return actionOk({ copied: source.items.length });
   } catch (cause) {
     return toActionError(cause, "Không sao chép được thực đơn trước.");
+  }
+}
+
+/* ────────────────────────────────── import ───────────────────────────────── */
+
+const importSchema = z.object({
+  serviceDate: serviceDateSchema,
+  text: z.string().trim().min(1, "Hãy dán thực đơn vào ô bên trên.").max(20_000),
+});
+
+/**
+ * Builds a day's menu from the restaurant's Zalo message.
+ *
+ * Replaces whatever the day already has — importing is how you set the day up,
+ * not how you patch it — so it refuses once anyone has booked, rather than
+ * cascade-deleting their picks along with the dishes.
+ */
+export async function importMenuText(
+  input: unknown,
+): Promise<ActionResult<{ imported: number; missingPrice: number }>> {
+  try {
+    await assertAdmin();
+    const { serviceDate, text } = importSchema.parse(input);
+
+    const parsed = parseMenuText(text);
+    if (parsed.items.length === 0) {
+      fail("Không nhận ra món nào. Thực đơn cần có các mục Món chính, Món phụ, Món rau…");
+    }
+
+    const [day] = await db
+      .insert(menuDays)
+      .values({ serviceDate, status: "draft" })
+      .onConflictDoUpdate({ target: menuDays.serviceDate, set: { serviceDate } })
+      .returning({ id: menuDays.id });
+
+    const booked = await db
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(and(eq(bookings.menuDayId, day.id), eq(bookings.status, "booked")))
+      .limit(1);
+
+    if (booked.length > 0) {
+      fail("Đã có người đặt món cho ngày này — không thể nhập đè thực đơn.");
+    }
+
+    await db.delete(menuItems).where(eq(menuItems.menuDayId, day.id));
+    await db.insert(menuItems).values(
+      parsed.items.map((item, index) => ({
+        menuDayId: day.id,
+        name: item.name,
+        description: item.description,
+        category: item.category,
+        priceVnd: priceForCategory(item.category, item.priceVnd),
+        isAvailable: true,
+        sortOrder: index,
+      })),
+    );
+
+    revalidateMenu(serviceDate);
+    return actionOk({ imported: parsed.items.length, missingPrice: parsed.missingPrice });
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Không đọc được thực đơn." };
+    }
+    return toActionError(cause, "Không nhập được thực đơn.");
   }
 }

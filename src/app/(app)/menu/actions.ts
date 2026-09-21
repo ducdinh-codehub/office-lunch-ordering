@@ -158,6 +158,21 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
     }
     if (!item.isAvailable && quantity > 0) fail("Món này đã hết.");
 
+    // "Gọi thêm" is an extra on top of a suất, not a meal on its own: it only
+    // opens once the set is complete. Removing (quantity 0) always works, so a
+    // dish picked earlier can still be dropped if the set falls apart.
+    if (item.category === "addon" && quantity > 0) {
+      const dayHasSet = item.requiredMain + item.requiredSide + item.requiredVeg > 0;
+      if (dayHasSet) {
+        const counts = await getSetSelectionCounts(user.id, item.menuDayId);
+        const setComplete =
+          counts.main === item.requiredMain &&
+          counts.side === item.requiredSide &&
+          counts.veg === item.requiredVeg;
+        if (!setComplete) fail("Hãy chọn đủ suất trước khi gọi thêm món.");
+      }
+    }
+
     if (quantity === 0) {
       await db
         .delete(bookings)

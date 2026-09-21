@@ -1,4 +1,9 @@
+import { sql } from "drizzle-orm";
+
 import { SettingsForm } from "@/components/admin/settings-form";
+import { ResetOrders } from "@/components/admin/reset-orders";
+import { db } from "@/db";
+import { bookings } from "@/db/schema";
 import { getAppSettings } from "@/db/queries/settings";
 import { requireAdmin } from "@/lib/auth/session";
 
@@ -7,7 +12,10 @@ export const metadata = { title: "Cài đặt · Lunch Time" };
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const settings = await getAppSettings();
+  const [settings, [{ count: bookingCount }]] = await Promise.all([
+    getAppSettings(),
+    db.select({ count: sql<number>`count(*)::int` }).from(bookings),
+  ]);
 
   return (
     <div className="space-y-5">
@@ -26,6 +34,8 @@ export default async function AdminSettingsPage() {
         defaultShipFeeVnd={settings.defaultShipFeeVnd}
         qrImageStamp={settings.qrImageData ? String(settings.updatedAt.getTime()) : null}
       />
+
+      <ResetOrders bookingCount={bookingCount} />
     </div>
   );
 }

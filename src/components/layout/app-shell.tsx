@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { CalendarDays, ReceiptText, Settings2, UtensilsCrossed, Wallet } from "lucide-react";
+import {
+  CalendarDays,
+  ClipboardList,
+  ReceiptText,
+  Settings2,
+  UtensilsCrossed,
+  Wallet,
+} from "lucide-react";
 
 import { SignOutButton } from "./sign-out-button";
 import { MobileNav } from "./mobile-nav";
@@ -13,6 +20,7 @@ const userLinks = [
 
 const adminLinks = [
   { href: "/admin/menu", label: "Thực đơn", icon: UtensilsCrossed },
+  { href: "/admin/bookings", label: "Đơn hàng", icon: ClipboardList },
   { href: "/admin/payments", label: "Bảng thu", icon: ReceiptText },
   { href: "/admin/settings", label: "Cài đặt", icon: Settings2 },
 ];

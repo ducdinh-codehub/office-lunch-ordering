@@ -19,7 +19,13 @@ import {
   getKitchenSummary,
 } from "@/db/queries/bookings";
 import { getMenuDay } from "@/db/queries/menu";
-import { formatServiceDate, isServiceDate } from "@/lib/date";
+import {
+  formatServiceDate,
+  formatServiceDateShort,
+  isServiceDate,
+  shiftServiceDate,
+  todayServiceDate,
+} from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import type { MenuItemCategory } from "@/db/schema";
 
@@ -40,6 +46,8 @@ export default async function AdminDayBookingsPage({
 }) {
   const { date } = await params;
   if (!isServiceDate(date)) notFound();
+
+  const today = todayServiceDate();
 
   const [kitchen, people, setOrders, day] = await Promise.all([
     getKitchenSummary(date),
@@ -85,6 +93,22 @@ export default async function AdminDayBookingsPage({
     `Tổng: ${formatVnd(totalVnd)}`,
   ].join("\n");
 
+  // The same day grouped by diner, one line each — short enough to read in a
+  // chat without scrolling. `people` is already ordered by name, then dish.
+  const byPerson = new Map<string, { name: string; dishes: string[] }>();
+  for (const row of people) {
+    const entry = byPerson.get(row.userId) ?? {
+      name: row.displayName ?? row.email.split("@")[0],
+      dishes: [],
+    };
+    entry.dishes.push(row.quantity > 1 ? `${row.itemName} x${row.quantity}` : row.itemName);
+    byPerson.set(row.userId, entry);
+  }
+
+  const peopleText = [...byPerson.values()]
+    .map(({ name, dishes }) => `${name}(${dishes.join("; ")})`)
+    .join("\n");
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -96,6 +120,24 @@ export default async function AdminDayBookingsPage({
           <ChevronLeft className="size-4" />
           Sửa thực đơn
         </LinkButton>
+      </div>
+
+      {/* The nav tab lands on today, so days are switched from here. */}
+      <div className="flex flex-wrap gap-1.5">
+        {[-1, 0, 1, 2].map((offset) => {
+          const target = shiftServiceDate(today, offset);
+          const label = offset === 0 ? "Hôm nay" : formatServiceDateShort(target);
+          return (
+            <LinkButton
+              key={target}
+              href={`/admin/bookings/${target}`}
+              size="sm"
+              variant={target === date ? "default" : "outline"}
+            >
+              {label}
+            </LinkButton>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -192,7 +234,10 @@ export default async function AdminDayBookingsPage({
       {people.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Ai đặt món gì</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base">Ai đặt món gì</CardTitle>
+              <CopyKitchenList text={peopleText} />
+            </div>
           </CardHeader>
           <CardContent>
             <Table>

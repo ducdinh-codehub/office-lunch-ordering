@@ -6,7 +6,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { payments } from "@/db/schema";
+import { bookings, dayOrders, menuDays, payments } from "@/db/schema";
 import { getUserTotalsForDates } from "@/db/queries/bookings";
 import { getCurrentUser } from "@/lib/auth/session";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
@@ -128,5 +128,61 @@ export async function unmarkPaid(input: unknown): Promise<ActionResult> {
     return actionOk();
   } catch (cause) {
     return toActionError(cause, "Không hoàn tác được.");
+  }
+}
+
+const deleteOrderSchema = z.object({
+  userId: z.string().uuid(),
+  serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+/**
+ * Removes one person's order for one day — someone who was away, or a day
+ * entered by mistake. Their dishes, their set, and any unconfirmed claim for
+ * that date go; they stop owing for it.
+ *
+ * A day already confirmed as paid is refused: the money is in, so deleting the
+ * order would leave a payment with nothing behind it. Undo the payment first.
+ */
+export async function deleteDayOrder(input: unknown): Promise<ActionResult> {
+  try {
+    await assertAdmin();
+    const { userId, serviceDate } = deleteOrderSchema.parse(input);
+
+    const confirmed = await db.query.payments.findFirst({
+      where: and(
+        eq(payments.userId, userId),
+        eq(payments.serviceDate, serviceDate),
+        eq(payments.status, "confirmed"),
+      ),
+    });
+    if (confirmed) {
+      fail("Ngày này đã xác nhận trả tiền. Hãy bỏ đánh dấu đã trả trước khi xoá đơn.");
+    }
+
+    const day = await db.query.menuDays.findFirst({
+      where: eq(menuDays.serviceDate, serviceDate),
+    });
+    if (!day) fail("Không tìm thấy thực đơn của ngày này.");
+
+    await db
+      .delete(bookings)
+      .where(and(eq(bookings.userId, userId), eq(bookings.menuDayId, day.id)));
+    await db
+      .delete(dayOrders)
+      .where(and(eq(dayOrders.userId, userId), eq(dayOrders.menuDayId, day.id)));
+    // A pending or rejected claim for a day with no order is a claim for
+    // nothing; confirmed ones were refused above.
+    await db
+      .delete(payments)
+      .where(and(eq(payments.userId, userId), eq(payments.serviceDate, serviceDate)));
+
+    revalidatePayments();
+    revalidatePath("/me/bookings");
+    revalidatePath(`/menu/${serviceDate}`);
+    revalidatePath(`/admin/bookings/${serviceDate}`);
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không xoá được đơn của ngày này.");
   }
 }

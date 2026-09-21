@@ -224,12 +224,19 @@ export async function MenuDayView({
             0,
           );
 
+          // "Gọi thêm" tops up a suất, so it stays hidden until the set is
+          // complete — matching the rule setBooking enforces. Anything already
+          // chosen keeps the section visible even if the set later falls apart,
+          // so nothing is billed from a section the diner cannot see.
+          const locked = category === "addon" && offersSet && !setComplete;
+          if (locked && chosenCount === 0) return null;
+
           return (
             <MenuSection
               key={category}
               emoji={emoji}
               label={label}
-              hint="tính tiền riêng"
+              hint={locked ? "hoàn tất suất để giữ món" : "tính tiền riêng"}
               summary={
                 chosenCount > 0 ? (
                   <span className="text-primary font-medium">đã chọn {chosenCount}</span>
