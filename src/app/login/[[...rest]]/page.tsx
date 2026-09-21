@@ -6,7 +6,7 @@ export const metadata = { title: "Đăng nhập · Lunch Time" };
 
 export default function LoginPage() {
   return (
-    <AuthScreen subtitle="Đặt cơm trưa và theo dõi số tiền bạn còn nợ.">
+    <AuthScreen subtitle="Hệ thống đặt cơm trưa phòng PTPM3">
       <SignIn signUpUrl="/sign-up" />
     </AuthScreen>
   );
