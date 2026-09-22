@@ -6,6 +6,7 @@ import { MenuDayView } from "@/components/menu/menu-day-view";
 import { CloseButton } from "@/components/layout/close-button";
 import { getMenuDay } from "@/db/queries/menu";
 import { requireUser } from "@/lib/auth/session";
+import { parseSelectedTier } from "@/lib/set-tiers";
 import {
   formatServiceDateShort,
   isServiceDate,
@@ -17,10 +18,12 @@ export const dynamic = "force-dynamic";
 
 export default async function MenuDatePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ date: string }>;
+  searchParams: Promise<{ suat?: string }>;
 }) {
-  const { date } = await params;
+  const [{ date }, { suat }] = await Promise.all([params, searchParams]);
   if (!isServiceDate(date)) notFound();
 
   const user = await requireUser();
@@ -58,7 +61,12 @@ export default async function MenuDatePage({
         </div>
       </div>
 
-      <MenuDayView serviceDate={date} day={visibleDay} userId={user.id} />
+      <MenuDayView
+        serviceDate={date}
+        day={visibleDay}
+        userId={user.id}
+        selectedTier={parseSelectedTier(suat)}
+      />
     </div>
   );
 }

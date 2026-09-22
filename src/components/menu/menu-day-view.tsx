@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { MenuItemRow } from "./menu-item-row";
 import { SetDishRow } from "./set-dish-row";
 import { MenuSection } from "./menu-section";
+import { SetTierBadges } from "./set-tier-badges";
+import { SetCompleteDialog } from "./set-complete-dialog";
 import { bookingClosedReason, isBookingOpen, type MenuDayWithItems } from "@/db/queries/menu";
 import {
   maxSetPicks,
@@ -18,7 +20,7 @@ import {
 import { getShipShares, getUserBookingsForDay, getUserSetPriceForDay } from "@/db/queries/bookings";
 import { formatInstant, formatServiceDate, type ServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
-import type { MenuItemCategory } from "@/db/schema";
+import type { MenuItemCategory, SetTierKey } from "@/db/schema";
 
 const SET_SECTIONS = [
   { category: "main", label: "Món chính", emoji: "🥩" },
@@ -36,6 +38,7 @@ export async function MenuDayView({
   day,
   userId,
   onBehalfOf,
+  selectedTier = null,
 }: {
   serviceDate: ServiceDate;
   day: MenuDayWithItems | null;
@@ -46,6 +49,12 @@ export async function MenuDayView({
    * ordering late by hand is the point of the override.
    */
   onBehalfOf?: string;
+  /**
+   * Which suất the diner tapped, from the `suat` query parameter. Null means
+   * they have not chosen yet, and the day is read the old way: whichever suất
+   * their picks happen to match.
+   */
+  selectedTier?: SetTierKey | null;
 }) {
   const [myBookings, lockedSetPrice, shipShares] = await Promise.all([
     getUserBookingsForDay(userId, serviceDate),
@@ -82,7 +91,6 @@ export async function MenuDayView({
   // A day offers one suất, or two — e.g. 1 món chính at 40.000 ₫ beside 2 at
   // 50.000 ₫. Which one a diner is on follows from what they picked.
   const tiers = setTiers(day);
-  const maxPicks = maxSetPicks(day);
   const picked: SetCounts = {
     main: countPicked(myBookings, itemsIn("main")),
     side: countPicked(myBookings, itemsIn("side")),
@@ -92,8 +100,21 @@ export async function MenuDayView({
   // The suất is offered only if the day actually has set dishes to pick from.
   const offersSet =
     tiers.length > 0 && SET_SECTIONS.some(({ category }) => itemsIn(category).length > 0);
+  // What they are actually billed: still the suất their picks match exactly.
   const currentTier = offersSet ? resolveSetTier(day, picked) : null;
   const setComplete = Boolean(currentTier);
+
+  // The suất being picked towards: the one they tapped, or the day's primary one
+  // — `full`, the plain `set_price_vnd` — as the default, so the card always has
+  // a target to count against and the common order needs no tap at all.
+  const activeTier =
+    tiers.find((tier) => tier.key === selectedTier) ??
+    tiers.find((tier) => tier.key === "full") ??
+    tiers[0] ??
+    null;
+  // Quotas follow that target. It is only a target: stopping early on a smaller
+  // suất still completes that smaller one, which is what `currentTier` reports.
+  const maxPicks = activeTier ? activeTier.required : maxSetPicks(day);
   const setStarted = picked.main + picked.side + picked.veg > 0;
 
   // What they'd owe: the price locked in on their day_orders row, today's price
@@ -107,18 +128,18 @@ export async function MenuDayView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-lg">{formatServiceDate(serviceDate)}</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            {offersSet &&
-              tiers
-                .filter((tier) => tier.priceVnd > 0)
-                .map((tier) => (
-                  <Badge
-                    key={tier.key}
-                    variant={currentTier?.key === tier.key ? "default" : "outline"}
-                    className="tabular-nums"
-                  >
-                    Suất {formatVnd(tier.priceVnd)}
-                  </Badge>
-                ))}
+            {offersSet && (
+              <SetTierBadges
+                tiers={tiers
+                  .filter((tier) => tier.priceVnd > 0)
+                  .map((tier) => ({
+                    key: tier.key,
+                    priceVnd: tier.priceVnd,
+                    composition: tierComposition(tier),
+                  }))}
+                activeKey={activeTier?.key ?? null}
+              />
+            )}
             {day.shipFeeVnd > 0 && (
               <Badge variant="outline" className="tabular-nums">
                 Ship {formatVnd(day.shipFeeVnd)} chia đều
@@ -162,60 +183,52 @@ export async function MenuDayView({
                   : "bg-muted/50"
               }`}
             >
-              {tiers.length === 1 ? (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {setComplete ? (
-                    <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
-                      <Check className="size-4" />
-                      Suất của bạn đã đủ món
-                    </span>
-                  ) : (
-                    <span className="font-medium">
-                      {setStarted ? "Suất chưa đủ món" : "Chọn đủ món để đặt suất"}
-                    </span>
-                  )}
-                  {SET_SECTIONS.filter(({ category }) => tiers[0].required[category] > 0).map(
-                    ({ category, label }) => (
+              {activeTier && (
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {setComplete ? (
+                      <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+                        <Check className="size-4" />
+                        Suất của bạn đã đủ món
+                        {/* They stopped on a different suất from the one they are
+                            aiming at — say which one is being charged. */}
+                        {currentTier && currentTier.key !== activeTier.key && (
+                          <span className="font-normal">
+                            — đang tính suất {formatVnd(currentTier.priceVnd)}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="font-medium">
+                        {setStarted ? "Suất chưa đủ món" : "Chọn đủ món để đặt suất"}
+                      </span>
+                    )}
+                    {SET_SECTIONS.filter(
+                      ({ category }) => activeTier.required[category] > 0,
+                    ).map(({ category, label }) => (
                       <span
                         key={category}
                         className={
-                          picked[category] === tiers[0].required[category]
+                          picked[category] === activeTier.required[category]
                             ? "text-emerald-700 dark:text-emerald-400"
                             : "text-muted-foreground"
                         }
                       >
-                        {label} {picked[category]}/{tiers[0].required[category]}
+                        {label} {picked[category]}/{activeTier.required[category]}
                       </span>
-                    ),
-                  )}
-                </div>
-              ) : (
-                /* Two suất on offer: show them as the choices they are, each with
-                   how far off it is, so the diner sees what a món chính more or
-                   less would cost them. */
-                <div className="space-y-1.5">
-                  <p className="font-medium">
-                    {setComplete ? "Suất của bạn" : "Chọn một suất"}
-                  </p>
-                  {tiers.map((tier) => {
-                    const status = tierStatus(tier, picked);
-                    const isCurrent = currentTier?.key === tier.key;
-                    return (
-                      <div
-                        key={tier.key}
-                        className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 ${
-                          isCurrent
-                            ? "font-medium text-emerald-800 dark:text-emerald-300"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {isCurrent && <Check className="size-4 shrink-0" />}
-                        <span className="tabular-nums">Suất {formatVnd(tier.priceVnd)}</span>
-                        <span className="text-xs">{tierComposition(tier)}</span>
-                        <span className="text-xs">— {status}</span>
-                      </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+
+                  {/* What the other suất would ask for, so switching is an
+                      informed tap rather than a guess. */}
+                  {tiers
+                    .filter((tier) => tier.key !== activeTier.key)
+                    .map((tier) => (
+                      <p key={tier.key} className="text-muted-foreground text-xs">
+                        Suất {formatVnd(tier.priceVnd)}: {tierComposition(tier)} —{" "}
+                        {tierStatus(tier, picked)}
+                      </p>
+                    ))}
                 </div>
               )}
               {!setComplete && setStarted && (
@@ -237,7 +250,7 @@ export async function MenuDayView({
                   key={category}
                   emoji={emoji}
                   label={label}
-                  hint={`chọn ${allowedPicksLabel(tiers, category)}`}
+                  hint={`chọn ${maxPicks[category]} món`}
                   summary={
                     <span
                       className={
@@ -350,6 +363,18 @@ export async function MenuDayView({
           </div>
         )}
 
+        {/* Announced the moment a suất is completed, not while one already is. */}
+        {offersSet && (
+          <SetCompleteDialog
+            complete={setComplete}
+            detail={
+              currentTier
+                ? `Suất ${formatVnd(setPrice)} đã được tính vào đơn hôm nay.`
+                : undefined
+            }
+          />
+        )}
+
         {dayTotal > 0 && (
           <Link
             href="/me/payments"
@@ -385,14 +410,6 @@ function tierStatus(tier: SetTier, picked: SetCounts): string {
   if (over) return `bỏ bớt ${over}`;
 
   return "đã đủ món";
-}
-
-/** "1" or "1 hoặc 2" — how many dishes of a category the day's suất take. */
-function allowedPicksLabel(tiers: SetTier[], category: "main" | "side" | "veg"): string {
-  const counts = [...new Set(tiers.map((tier) => tier.required[category]))].sort(
-    (a, b) => a - b,
-  );
-  return counts.join(" hoặc ");
 }
 
 /** How many of `items` the diner has booked. */

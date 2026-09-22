@@ -114,3 +114,8 @@ export function reachableTiers(day: SetTierFields, picked: SetCounts): SetTier[]
     return missing.main >= 0 && missing.side >= 0 && missing.veg >= 0;
   });
 }
+
+/** The `suat` query parameter, kept only when it names a real suất. */
+export function parseSelectedTier(value: string | undefined): SetTierKey | null {
+  return value === "full" || value === "alt" ? value : null;
+}

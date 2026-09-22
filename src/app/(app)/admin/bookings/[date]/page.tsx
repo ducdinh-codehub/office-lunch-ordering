@@ -21,6 +21,7 @@ import {
   getKitchenSummary,
 } from "@/db/queries/bookings";
 import { getMenuDay } from "@/db/queries/menu";
+import { parseSelectedTier } from "@/lib/set-tiers";
 import { getAllDiners } from "@/db/queries/users";
 import {
   formatServiceDate,
@@ -47,12 +48,12 @@ export default async function AdminDayBookingsPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ for?: string }>;
+  searchParams: Promise<{ for?: string; suat?: string }>;
 }) {
   const { date } = await params;
   if (!isServiceDate(date)) notFound();
 
-  const { for: forUserId } = await searchParams;
+  const { for: forUserId, suat } = await searchParams;
   const today = todayServiceDate();
 
   const [kitchen, people, setOrders, day, diners] = await Promise.all([
@@ -184,6 +185,7 @@ export default async function AdminDayBookingsPage({
               day={day}
               userId={orderingFor.id}
               onBehalfOf={orderingFor.id}
+              selectedTier={parseSelectedTier(suat)}
             />
           </div>
         )}

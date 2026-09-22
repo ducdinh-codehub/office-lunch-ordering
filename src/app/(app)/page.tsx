@@ -6,13 +6,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
 import { getUserLedger, settleableEntries } from "@/db/queries/payments";
 import { requireUser } from "@/lib/auth/session";
+import { parseSelectedTier } from "@/lib/set-tiers";
 import { formatServiceDateShort, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
-export default async function TodayPage() {
-  const user = await requireUser();
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ suat?: string }>;
+}) {
+  const [{ suat }, user] = await Promise.all([searchParams, requireUser()]);
   const today = todayServiceDate();
   const tomorrow = shiftServiceDate(today, 1);
 
@@ -54,7 +59,12 @@ export default async function TodayPage() {
         </Link>
       )}
 
-      <MenuDayView serviceDate={today} day={day} userId={user.id} />
+      <MenuDayView
+        serviceDate={today}
+        day={day}
+        userId={user.id}
+        selectedTier={parseSelectedTier(suat)}
+      />
 
       {tomorrowIsBookable && (
         <Link
