@@ -20,6 +20,7 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer";
+import { APP_SHORT_NAME } from "@/lib/app-name";
 
 export type NavLink = { href: string; label: string };
 
@@ -103,7 +104,7 @@ export function MobileNav({
         <DrawerHeader>
           <DrawerTitle className="flex items-center gap-2">
             <span aria-hidden>🍽️</span>
-            Lunch Time
+            {APP_SHORT_NAME}
           </DrawerTitle>
         </DrawerHeader>
 

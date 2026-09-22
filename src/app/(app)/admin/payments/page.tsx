@@ -12,9 +12,10 @@ import {
   todayServiceDate,
 } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
+import { pageTitle } from "@/lib/app-name";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Bảng thu tiền · Lunch Time" };
+export const metadata = { title: pageTitle("Bảng thu tiền") };
 
 type Range = { from: string; to: string; label: string };
 

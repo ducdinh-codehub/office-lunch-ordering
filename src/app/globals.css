@@ -200,3 +200,47 @@
     transition: none !important;
   }
 }
+
+/* ── Drifting food backdrop (sign-in screens) ──────────────────────────────
+   Three drift paths rather than one, so a screenful of emoji never moves in
+   lockstep — that synchrony is what makes a background feel like a screensaver
+   instead of texture. Long durations keep it calm; the elements are muted and
+   faint in the markup, not here. */
+@theme {
+  --animate-drift-a: drift-a 20s ease-in-out infinite alternate;
+  --animate-drift-b: drift-b 26s ease-in-out infinite alternate;
+  --animate-drift-c: drift-c 23s ease-in-out infinite alternate;
+}
+
+@keyframes drift-a {
+  from {
+    transform: translate3d(0, 0, 0) rotate(-8deg);
+  }
+  to {
+    transform: translate3d(6rem, -7rem, 0) rotate(16deg);
+  }
+}
+
+@keyframes drift-b {
+  from {
+    transform: translate3d(0, 0, 0) rotate(6deg);
+  }
+  to {
+    transform: translate3d(-7rem, -5rem, 0) rotate(-18deg);
+  }
+}
+
+@keyframes drift-c {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(4.5rem, 8rem, 0) rotate(20deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .food-backdrop * {
+    animation: none !important;
+  }
+}

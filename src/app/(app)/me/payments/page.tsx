@@ -4,9 +4,10 @@ import { getAppSettings } from "@/db/queries/settings";
 import { requireUser } from "@/lib/auth/session";
 import { shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { buildTransferMemo, buildVietQrUrl, isBankAccountConfigured } from "@/lib/vietqr";
+import { pageTitle } from "@/lib/app-name";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Thanh toán · Lunch Time" };
+export const metadata = { title: pageTitle("Thanh toán") };
 
 export default async function MyPaymentsPage() {
   const user = await requireUser();

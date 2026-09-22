@@ -6,9 +6,10 @@ import { getUserDailyTotals } from "@/db/queries/bookings";
 import { requireUser } from "@/lib/auth/session";
 import { formatServiceDate, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
+import { pageTitle } from "@/lib/app-name";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Đơn của tôi · Lunch Time" };
+export const metadata = { title: pageTitle("Đơn của tôi") };
 
 export default async function MyBookingsPage() {
   const user = await requireUser();

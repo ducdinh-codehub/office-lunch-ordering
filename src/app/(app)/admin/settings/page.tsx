@@ -9,9 +9,10 @@ import { getAppSettings } from "@/db/queries/settings";
 import { getAllMembers } from "@/db/queries/users";
 import { fallbackDisplayName } from "@/lib/display-name";
 import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
+import { pageTitle } from "@/lib/app-name";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Cài đặt · Lunch Time" };
+export const metadata = { title: pageTitle("Cài đặt") };
 
 export default async function AdminSettingsPage() {
   await requireAdmin();

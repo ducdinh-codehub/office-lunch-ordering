@@ -11,6 +11,7 @@ import {
 import { SignOutButton } from "./sign-out-button";
 import { MobileNav } from "./mobile-nav";
 import { DonateButton } from "./donate-button";
+import { APP_SHORT_NAME } from "@/lib/app-name";
 import type { SessionUser } from "@/lib/auth/session";
 
 const userLinks = [
@@ -44,7 +45,7 @@ export function AppShell({
             <span aria-hidden className="text-lg">
               🍽️
             </span>
-            <span className="hidden sm:inline">Lunch Time</span>
+            <span className="hidden sm:inline">{APP_SHORT_NAME}</span>
           </Link>
 
           {/* Phone: a breadcrumb showing where you are, which opens the rest. */}
