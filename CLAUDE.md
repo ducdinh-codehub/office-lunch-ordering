@@ -13,7 +13,8 @@ npx tsc --noEmit      # typecheck alone, faster than a full build
 pnpm setup            # interactive credential wizard (scripts/setup.sh)
 pnpm db:local         # self-contained Postgres in .localdb/ (also :stop, :destroy)
 pnpm db:generate      # generate a migration after editing src/db/schema.ts
-pnpm db:migrate       # apply pending migrations
+pnpm db:migrate       # apply pending migrations to .env.local's database
+pnpm db:migrate:prod  # ...and to the production one named in .env.prod
 pnpm db:studio        # browse data
 pnpm db:verify        # data-layer checks (see below)
 ```
@@ -26,6 +27,12 @@ the modules it imports are marked `server-only`; that flag is required, not
 incidental.
 
 ## Required environment
+
+Dev and production use **separate databases**. `.env.local` points at the local
+Postgres `pnpm db:local` starts; `.env.prod` holds the hosted URL Vercel serves and
+is read only by `pnpm db:migrate:prod`. Vercel's build does not migrate, so a new
+migration must be applied to both before deploying — otherwise the deployed code
+selects columns the production database does not have yet.
 
 Nothing runs without `.env.local`. `pnpm setup` walks a human through producing
 it; `.env.local.example` documents every key. `src/env.ts` throws a named error on

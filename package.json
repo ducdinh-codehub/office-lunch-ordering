@@ -10,6 +10,7 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:prod": "sh -c 'set -a; . ./.env.prod; set +a; drizzle-kit migrate'",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:verify": "tsx --conditions=react-server --env-file=.env.local scripts/verify-db.mts",
