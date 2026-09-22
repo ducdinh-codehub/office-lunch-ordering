@@ -95,26 +95,6 @@ export function resolveSetTier(day: SetTierFields, picked: SetCounts): SetTier |
   );
 }
 
-/** What a diner still has to pick to complete `tier`. Negative means too many. */
-export function missingFor(tier: SetTier, picked: SetCounts): SetCounts {
-  return {
-    main: tier.required.main - picked.main,
-    side: tier.required.side - picked.side,
-    veg: tier.required.veg - picked.veg,
-  };
-}
-
-/**
- * Tiers still within reach — ones the diner can complete by picking more,
- * without giving anything up. Used to tell them what the next suất up costs.
- */
-export function reachableTiers(day: SetTierFields, picked: SetCounts): SetTier[] {
-  return setTiers(day).filter((tier) => {
-    const missing = missingFor(tier, picked);
-    return missing.main >= 0 && missing.side >= 0 && missing.veg >= 0;
-  });
-}
-
 /** The `suat` query parameter, kept only when it names a real suất. */
 export function parseSelectedTier(value: string | undefined): SetTierKey | null {
   return value === "full" || value === "alt" ? value : null;

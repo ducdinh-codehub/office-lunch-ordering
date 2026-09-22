@@ -45,6 +45,8 @@ export function buildTransferMemo(input: {
   email: string;
   displayName?: string | null;
   claimId?: string;
+  /** What the transfer is for. "LUNCH" unless something else is paying. */
+  prefix?: string;
 }): string {
   const handle = (input.displayName || input.email.split("@")[0] || "USER")
     .normalize("NFD")
@@ -55,5 +57,5 @@ export function buildTransferMemo(input: {
     .toUpperCase()
     .slice(0, 12);
   const ref = input.claimId ? input.claimId.replace(/-/g, "").slice(0, 6).toUpperCase() : "";
-  return ["LUNCH", handle, ref].filter(Boolean).join(" ");
+  return [input.prefix ?? "LUNCH", handle, ref].filter(Boolean).join(" ");
 }

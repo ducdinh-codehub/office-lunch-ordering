@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { and, eq, inArray } from "drizzle-orm";
 import { ClipboardList } from "lucide-react";
 
-import { ImportMenu } from "@/components/admin/import-menu";
 import { MenuEditor } from "@/components/admin/menu-editor";
 import { LinkButton } from "@/components/ui/link-button";
 import { Badge } from "@/components/ui/badge";
@@ -95,10 +94,6 @@ export default async function AdminMenuPage({
           );
         })}
       </div>
-
-      {/* Keyed by date for the same reason MenuEditor is: a half-typed paste
-          must not follow the admin to another day. */}
-      <ImportMenu key={`import-${serviceDate}`} serviceDate={serviceDate} />
 
       {/* Keyed by date so switching days remounts the form; without this the
           previous day's status/cutoff/note would linger in local state. */}

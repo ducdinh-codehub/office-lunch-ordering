@@ -14,6 +14,7 @@ import {
 import { getCurrentUser } from "@/lib/auth/session";
 import { localInputToInstant } from "@/lib/date";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
+import { offersSet } from "@/lib/set-tiers";
 import { parseMenuText } from "@/lib/menu-import";
 
 async function assertAdmin() {
@@ -37,6 +38,36 @@ const categorySchema = z.enum(["main", "side", "veg", "addon", "drink"]);
 /** Set dishes are covered by the set price, so they never carry one of their own. */
 function priceForCategory(category: z.infer<typeof categorySchema>, priceVnd: number) {
   return (SET_CATEGORIES as readonly string[]).includes(category) ? 0 : priceVnd;
+}
+
+/**
+ * A day is priced one way or the other: combo, where a suất of N dishes costs a
+ * fixed price, or per-dish, where every dish carries its own. Never both.
+ *
+ * The mode is not stored — a day sells a combo exactly when it asks for at least
+ * one dish — so this reads the counts back rather than a flag that could drift
+ * out of step with them.
+ */
+async function loadDayMode(menuDayId: string): Promise<"combo" | "per-dish"> {
+  const day = await db.query.menuDays.findFirst({ where: eq(menuDays.id, menuDayId) });
+  if (!day) fail("Ngày này không còn tồn tại.");
+  return offersSet(day) ? "combo" : "per-dish";
+}
+
+/**
+ * Món chính / phụ / rau only mean something inside a combo: their price is
+ * forced to 0 because the suất covers them, and a day with no combo never
+ * renders them. Letting one through would create a dish that is free and
+ * invisible at the same time.
+ */
+function assertCategoryFitsMode(
+  mode: "combo" | "per-dish",
+  category: z.infer<typeof categorySchema>,
+) {
+  const isSetCategory = (SET_CATEGORIES as readonly string[]).includes(category);
+  if (mode === "per-dish" && isSetCategory) {
+    fail("Ngày này tính tiền theo món — hãy để món ở nhóm món ăn, không phải nhóm suất.");
+  }
 }
 
 /* ─────────────────────────────── the day itself ──────────────────────────── */
@@ -153,6 +184,8 @@ export async function addMenuItem(input: unknown): Promise<ActionResult> {
       .onConflictDoUpdate({ target: menuDays.serviceDate, set: { serviceDate } })
       .returning({ id: menuDays.id });
 
+    assertCategoryFitsMode(await loadDayMode(day.id), category);
+
     // Append to the end of the list.
     const [{ maxSort }] = await db
       .select({ maxSort: sql<number>`coalesce(max(${menuItems.sortOrder}), -1)::int` })
@@ -189,6 +222,13 @@ export async function updateMenuItem(input: unknown): Promise<ActionResult> {
     await assertAdmin();
     const { menuItemId, name, description, priceVnd, category, isAvailable } =
       updateItemSchema.parse(input);
+
+    const existing = await db.query.menuItems.findFirst({
+      where: eq(menuItems.id, menuItemId),
+      columns: { menuDayId: true },
+    });
+    if (!existing) fail("Món này không còn tồn tại.");
+    assertCategoryFitsMode(await loadDayMode(existing.menuDayId), category);
 
     const [updated] = await db
       .update(menuItems)

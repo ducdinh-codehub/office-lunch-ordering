@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { setBooking } from "@/app/(app)/menu/actions";
 import { formatVnd } from "@/lib/money";
 
+/** Matches the bound in `setBooking`; there to keep money inside an int, not to
+ *  cap an appetite. */
+const MAX_QUANTITY = 99;
+
 export type MenuItemRowProps = {
   item: {
     id: string;
@@ -24,12 +28,20 @@ export type MenuItemRowProps = {
 };
 
 export function MenuItemRow({ item, quantity, canBook, onBehalfOf }: MenuItemRowProps) {
-  // Optimistic local count so tapping +/- feels instant; reconciled by revalidation.
+  // Optimistic local count so tapping +/- feels instant.
   const [count, setCount] = useState(quantity);
   const [isPending, startTransition] = useTransition();
 
+  // ...and the server stays the truth: `useState` only seeds, so a count set
+  // here would otherwise survive an admin resetting the day from another screen.
+  const [serverQuantity, setServerQuantity] = useState(quantity);
+  if (serverQuantity !== quantity) {
+    setServerQuantity(quantity);
+    setCount(quantity);
+  }
+
   function changeBy(delta: number) {
-    const next = Math.max(0, Math.min(10, count + delta));
+    const next = Math.max(0, Math.min(MAX_QUANTITY, count + delta));
     if (next === count) return;
     const previous = count;
     setCount(next);

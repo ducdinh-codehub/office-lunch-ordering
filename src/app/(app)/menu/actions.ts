@@ -1,14 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { bookings, menuDays, menuItems, users } from "@/db/schema";
+import { bookings, menuDays, menuItems, users, SET_CATEGORIES } from "@/db/schema";
 import { isBookingOpen, bookingClosedReason } from "@/db/queries/menu";
 import { getSetSelectionCounts, syncDayOrder } from "@/db/queries/bookings";
-import { maxSetPicks, offersSet, resolveSetTier } from "@/lib/set-tiers";
+import { maxSetPicks, offersSet, resolveSetTier, setTiers } from "@/lib/set-tiers";
 import { getCurrentUser, type SessionUser } from "@/lib/auth/session";
 import {
   actionOk,
@@ -21,7 +21,11 @@ const bookSchema = z.object({
   menuItemId: z.string().uuid(),
   /** Admin ordering for someone else; absent means "for myself". */
   onBehalfOf: z.string().uuid().optional(),
-  quantity: z.number().int().min(0).max(10),
+  // No product limit on how many portions of a dish someone orders — 0 removes
+  // the booking, 1 is the smallest real order. The ceiling is only arithmetic
+  // safety: quantity × unit price has to stay inside a 32-bit integer, which is
+  // the invariant that keeps money exact.
+  quantity: z.number().int().min(0).max(99),
   note: z.string().trim().max(200).optional(),
 });
 
@@ -161,6 +165,81 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
     return actionOk();
   } catch (cause) {
     return toActionError(cause, "Không lưu được lựa chọn của bạn.");
+  }
+}
+
+const switchTierSchema = z.object({
+  serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày không hợp lệ."),
+  tier: z.enum(["full", "alt"]),
+  onBehalfOf: z.string().uuid().optional(),
+});
+
+/**
+ * Moves the diner to the day's other suất, clearing the set dishes they had
+ * picked for the one they are leaving.
+ *
+ * Switching is a fresh start by design: the two suất take different numbers of
+ * món chính, so carrying picks across would leave a selection that is over quota
+ * for the new suất and has to be pruned by hand. Only the set dishes go — "gọi
+ * thêm" and drinks are priced per portion, not part of any suất, and nobody
+ * expects their drink cancelled for changing the rice.
+ */
+export async function switchSetTier(
+  input: unknown,
+): Promise<ActionResult<{ cleared: number }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+
+    const { serviceDate, tier, onBehalfOf } = switchTierSchema.parse(input);
+    const diner = await resolveDiner(user, onBehalfOf);
+
+    const day = await db.query.menuDays.findFirst({
+      where: eq(menuDays.serviceDate, serviceDate),
+    });
+    if (!day) fail("Chưa có thực đơn cho ngày này.");
+    if (!diner.overrideCutoff && !isBookingOpen(day)) {
+      fail(bookingClosedReason(day) ?? "Ngày này đã đóng đặt món.");
+    }
+    if (!setTiers(day).some((option) => option.key === tier)) {
+      fail("Ngày này không có suất đó.");
+    }
+
+    const setDishes = await db
+      .select({ id: menuItems.id })
+      .from(menuItems)
+      .where(
+        and(
+          eq(menuItems.menuDayId, day.id),
+          inArray(menuItems.category, [...SET_CATEGORIES]),
+        ),
+      );
+
+    let cleared = 0;
+    if (setDishes.length > 0) {
+      const removed = await db
+        .delete(bookings)
+        .where(
+          and(
+            eq(bookings.userId, diner.userId),
+            eq(bookings.menuDayId, day.id),
+            inArray(
+              bookings.menuItemId,
+              setDishes.map((dish) => dish.id),
+            ),
+          ),
+        )
+        .returning({ id: bookings.id });
+      cleared = removed.length;
+    }
+
+    // Nothing is left of the old suất, so the day_orders row goes with it.
+    await syncDayOrder(diner.userId, day.id);
+
+    revalidateFor(serviceDate);
+    return actionOk({ cleared });
+  } catch (cause) {
+    return toActionError(cause, "Không đổi được suất.");
   }
 }
 

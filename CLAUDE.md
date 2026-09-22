@@ -87,13 +87,26 @@ bug, not a style issue.
 - **Prices are snapshotted.** `bookings.unit_price_vnd` is copied from the menu item
   at booking time. Editing a menu price must never change a bill someone already
   has. `menu_items.price_vnd` is only ever the *current* advertised price.
-- **A day may sell two suất, told apart only by dish count.** `menu_days` carries
-  a second, optional set of required counts (`alt_required_*`) and its own price —
-  e.g. 1 món chính at 40k beside 2 at 50k. Nobody picks a tier by name: whichever
-  tier the picks match exactly is the one they are on (`src/lib/set-tiers.ts` is
-  the single place that decides), so the two tiers must never ask for the same
-  dishes. `day_orders.set_tier` records which one, and moving between tiers
-  rewrites the price snapshot — that is not a re-pricing, it is a different suất.
+- **A day is priced one way or the other, never both.** *Combo mode* sells a suất:
+  a fixed price for a required number of món chính / phụ / rau, with "gọi thêm"
+  and drinks charged on top. *Per-dish mode* has no suất and no groups — every
+  dish carries its own price and any quantity. The mode is **not a column**: a day
+  is in combo mode exactly when it asks for at least one dish
+  (`offersSet()` in `src/lib/set-tiers.ts`). "Combo mode" is the name in code and
+  in conversation; the tab a human reads says **Theo suất**. The admin's mode tabs write the
+  required counts; storing a flag beside them would create a second truth that
+  could drift. Server-side, `assertCategoryFitsMode` refuses a set-category dish
+  on a per-dish day — it would be forced to 0 ₫ *and* never rendered.
+- **Combo mode may sell two suất, told apart only by dish count.** `menu_days`
+  carries a second, optional set of required counts (`alt_required_*`) and its own
+  price — e.g. 1 món chính at 40k beside 2 at 50k. Nobody picks a tier by name:
+  whichever tier the picks match exactly is the one they are on
+  (`resolveSetTier()` is the single place that decides), so the two tiers must
+  never ask for the same dishes. `day_orders.set_tier` records which one, and
+  moving between tiers rewrites the price snapshot — that is not a re-pricing, it
+  is a different suất. The badges in the day view *choose* a tier: the choice
+  lives in the `suat` query parameter and clearing the dishes of the tier being
+  left is deliberate, since the two take different numbers of món chính.
 - **"Unpaid" is the absence of a `payments` row.** Rows are created only when
   someone claims payment, so nothing materialises a row per person per day. Days
   settled by one bank transfer share a `claim_id`, which is what lets the admin
@@ -101,7 +114,9 @@ bug, not a style issue.
 - **Amounts are recomputed server-side on every write.** `claimPayment` and
   `markPaidByAdmin` both call `getUserTotalsForDates()`; a total sent from the
   client is display-only and is never persisted.
-- **Money is integer VND.** No floats, no decimals, anywhere.
+- **Money is integer VND.** No floats, no decimals, anywhere. Booking quantity is
+  capped at 99 for that reason alone — `quantity × unit_price_vnd` has to stay
+  inside a 32-bit integer. It is not a product limit on how much someone may eat.
 - **Dates are anchored to `Asia/Ho_Chi_Minh`.** Never `new Date()` for "today" — use
   `todayServiceDate()` from `src/lib/date.ts`. `ServiceDate` is a `YYYY-MM-DD`
   string matching the Postgres `date` columns. `localInputToInstant()` converts a
@@ -130,7 +145,13 @@ everything in `AppShell`. `admin/layout.tsx` nests inside it and adds
 `src/components/ui/link-button.tsx` for button-styled links rather than
 re-deriving that.
 
-Two boundary gotchas that have already caused bugs:
+`MenuEditor` carries the combo / per-dish tabs. Per-dish mode hides every suất
+field, drops the category picker entirely (one bucket, `addon`, relabelled "Món
+ăn"), and warns about dishes stranded in a combo category — those would be free
+*and* invisible. `MenuDayView` mirrors it: no suất means no sections, just a flat
+list of priced rows.
+
+Three boundary gotchas that have already caused bugs:
 
 - `Map` does not survive the server → client boundary. `admin/payments/page.tsx`
   flattens roster cells to a plain `Record` before passing them down.
@@ -138,6 +159,12 @@ Two boundary gotchas that have already caused bugs:
   client-side navigation. `MenuEditor` is given `key={serviceDate}` to force a
   remount; without it, switching days carries the previous day's cutoff into the
   form and saving writes the wrong value.
+- **`useState(prop)` seeds, it does not sync.** `SetDishRow` and `MenuItemRow` hold
+  an optimistic tick/count for instant feedback, and both re-seed from the server
+  value whenever it moves (the render-phase adjust pattern, not an effect).
+  Without that, a pick cleared server-side — switching suất, an admin ordering on
+  your behalf — stays on screen as a tick standing for a booking that no longer
+  exists.
 
 Fonts: the Geist CSS variables are on `<html>`, not `<body>`, because `globals.css`
 applies `font-sans` at the root. `<ClerkProvider>` wraps `<html>` in the root

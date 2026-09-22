@@ -35,9 +35,20 @@ export function SetDishRow({
   canBook,
   onBehalfOf,
 }: SetDishRowProps) {
-  // Optimistic local state so ticking feels instant; reconciled by revalidation.
+  // Optimistic local state so ticking feels instant.
   const [checked, setChecked] = useState(selected);
   const [isPending, startTransition] = useTransition();
+
+  // ...and the server stays the truth. `useState` only seeds, so a tick would
+  // otherwise outlive the booking it stood for: switching suất clears these rows
+  // and an admin can change them from another screen. Re-seed whenever the
+  // server's answer moves, which it does not do mid-toggle — a pending pick
+  // leaves `selected` alone until the action has actually written it.
+  const [serverSelected, setServerSelected] = useState(selected);
+  if (serverSelected !== selected) {
+    setServerSelected(selected);
+    setChecked(selected);
+  }
 
   const soldOut = !item.isAvailable && !checked;
   const disabled = !canBook || isPending || soldOut || (!checked && !canSelect);

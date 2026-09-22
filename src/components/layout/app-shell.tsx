@@ -10,6 +10,7 @@ import {
 
 import { SignOutButton } from "./sign-out-button";
 import { MobileNav } from "./mobile-nav";
+import { DonateButton } from "./donate-button";
 import type { SessionUser } from "@/lib/auth/session";
 
 const userLinks = [
@@ -27,9 +28,12 @@ const adminLinks = [
 
 export function AppShell({
   user,
+  donate,
   children,
 }: {
   user: SessionUser;
+  /** Null when no bank account is set up — nothing to donate to. */
+  donate: React.ComponentProps<typeof DonateButton> | null;
   children: React.ReactNode;
 }) {
   return (
@@ -109,7 +113,9 @@ export function AppShell({
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 pb-16">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-6 pb-24">{children}</main>
+
+      {donate && <DonateButton {...donate} />}
     </div>
   );
 }

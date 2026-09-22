@@ -128,3 +128,75 @@
     @apply font-sans;
   }
 }
+/* ── The donate button ─────────────────────────────────────────────────────
+   Its own animations: a slow drift across the gradient, a cup that tips every
+   few seconds, and steam. Kept here rather than inline so `prefers-reduced-
+   motion` can switch the lot off in one place — a permanently moving button in
+   the corner is exactly what that setting exists for. */
+@theme {
+  --animate-donate-sheen: donate-sheen 6s ease-in-out infinite;
+  --animate-donate-wiggle: donate-wiggle 3.5s ease-in-out infinite;
+  --animate-donate-steam: donate-steam 2.8s ease-in-out infinite;
+  --animate-donate-float: donate-float 4.5s ease-in-out infinite;
+}
+
+@keyframes donate-sheen {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes donate-wiggle {
+  0%,
+  86%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  90% {
+    transform: rotate(-12deg) scale(1.12);
+  }
+  94% {
+    transform: rotate(10deg) scale(1.12);
+  }
+  98% {
+    transform: rotate(-4deg) scale(1.04);
+  }
+}
+
+@keyframes donate-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(2px) scale(0.8);
+  }
+  40% {
+    opacity: 0.75;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(1.15);
+  }
+}
+
+@keyframes donate-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(6deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donate-fab,
+  .donate-fab *,
+  .donate-card,
+  .donate-card * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

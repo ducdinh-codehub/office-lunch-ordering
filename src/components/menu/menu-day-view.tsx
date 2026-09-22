@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Clock, Lock } from "lucide-react";
+import { Clock, Lock } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,6 @@ import { SetCompleteDialog } from "./set-complete-dialog";
 import { bookingClosedReason, isBookingOpen, type MenuDayWithItems } from "@/db/queries/menu";
 import {
   maxSetPicks,
-  missingFor,
   resolveSetTier,
   setTiers,
   type SetCounts,
@@ -138,6 +137,9 @@ export async function MenuDayView({
                     composition: tierComposition(tier),
                   }))}
                 activeKey={activeTier?.key ?? null}
+                serviceDate={serviceDate}
+                canBook={canBook}
+                onBehalfOf={onBehalfOf}
               />
             )}
             {day.shipFeeVnd > 0 && (
@@ -175,69 +177,6 @@ export async function MenuDayView({
 
         {offersSet && (
           <>
-            {/* Where the diner stands against the day's suất. */}
-            <div
-              className={`rounded-lg border px-3 py-2.5 text-sm ${
-                setComplete
-                  ? "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40"
-                  : "bg-muted/50"
-              }`}
-            >
-              {activeTier && (
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {setComplete ? (
-                      <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
-                        <Check className="size-4" />
-                        Suất của bạn đã đủ món
-                        {/* They stopped on a different suất from the one they are
-                            aiming at — say which one is being charged. */}
-                        {currentTier && currentTier.key !== activeTier.key && (
-                          <span className="font-normal">
-                            — đang tính suất {formatVnd(currentTier.priceVnd)}
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="font-medium">
-                        {setStarted ? "Suất chưa đủ món" : "Chọn đủ món để đặt suất"}
-                      </span>
-                    )}
-                    {SET_SECTIONS.filter(
-                      ({ category }) => activeTier.required[category] > 0,
-                    ).map(({ category, label }) => (
-                      <span
-                        key={category}
-                        className={
-                          picked[category] === activeTier.required[category]
-                            ? "text-emerald-700 dark:text-emerald-400"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {label} {picked[category]}/{activeTier.required[category]}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* What the other suất would ask for, so switching is an
-                      informed tap rather than a guess. */}
-                  {tiers
-                    .filter((tier) => tier.key !== activeTier.key)
-                    .map((tier) => (
-                      <p key={tier.key} className="text-muted-foreground text-xs">
-                        Suất {formatVnd(tier.priceVnd)}: {tierComposition(tier)} —{" "}
-                        {tierStatus(tier, picked)}
-                      </p>
-                    ))}
-                </div>
-              )}
-              {!setComplete && setStarted && (
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Chưa đủ món thì suất chưa được tính tiền và bếp chưa nhận.
-                </p>
-              )}
-            </div>
-
             {SET_SECTIONS.map(({ category, label, emoji }) => {
               const items = itemsIn(category);
               if (items.length === 0) return null;
@@ -283,7 +222,23 @@ export async function MenuDayView({
           </>
         )}
 
-        {PAID_SECTIONS.map(({ category, label, emoji }) => {
+        {/* No suất means no groups: the day is simply a list of dishes with
+            prices, so there is nothing to divide it into. */}
+        {!offersSet &&
+          day.items
+            .filter((item) => item.category === "addon" || item.category === "drink")
+            .map((item) => (
+              <MenuItemRow
+                key={item.id}
+                item={item}
+                quantity={quantityByItem.get(item.id) ?? 0}
+                canBook={canBook}
+                onBehalfOf={onBehalfOf}
+              />
+            ))}
+
+        {offersSet &&
+          PAID_SECTIONS.map(({ category, label, emoji }) => {
           const items = itemsIn(category);
           if (items.length === 0) return null;
 
@@ -340,7 +295,9 @@ export async function MenuDayView({
             )}
             {paidTotal > 0 && (
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Gọi thêm & đồ uống</span>
+                <span className="text-muted-foreground">
+                  {offersSet ? "Gọi thêm & đồ uống" : "Món ăn"}
+                </span>
                 <span className="tabular-nums">{formatVnd(paidTotal)}</span>
               </div>
             )}
@@ -393,23 +350,6 @@ function tierComposition(tier: SetTier): string {
   return SET_SECTIONS.filter(({ category }) => tier.required[category] > 0)
     .map(({ category, label }) => `${tier.required[category]} ${label.toLowerCase()}`)
     .join(" · ");
-}
-
-/** How far a selection is from one suất, in the diner's own words. */
-function tierStatus(tier: SetTier, picked: SetCounts): string {
-  const missing = missingFor(tier, picked);
-  const phrase = (sign: 1 | -1) =>
-    SET_SECTIONS.filter(({ category }) => missing[category] * sign > 0)
-      .map(({ category, label }) => `${missing[category] * sign} ${label.toLowerCase()}`)
-      .join(", ");
-
-  const short = phrase(1);
-  if (short) return `còn thiếu ${short}`;
-
-  const over = phrase(-1);
-  if (over) return `bỏ bớt ${over}`;
-
-  return "đã đủ món";
 }
 
 /** How many of `items` the diner has booked. */
