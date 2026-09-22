@@ -83,15 +83,27 @@ export function AppShell({
           </nav>
 
           <div className="flex shrink-0 items-center gap-2">
-            {user.photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={user.photoUrl}
-                alt=""
-                className="size-7 rounded-full"
-                referrerPolicy="no-referrer"
-              />
-            ) : null}
+            {/* The way in to the profile, on every screen size — so it is still
+                reachable when the account has no avatar to click. */}
+            <Link
+              href="/me/profile"
+              title="Hồ sơ của bạn"
+              className="hover:ring-ring rounded-full transition-shadow hover:ring-2"
+            >
+              {user.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.photoUrl}
+                  alt="Hồ sơ của bạn"
+                  className="size-7 rounded-full"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-full text-xs font-medium">
+                  {(user.displayName ?? user.email).slice(0, 1).toUpperCase()}
+                </span>
+              )}
+            </Link>
             <SignOutButton />
           </div>
         </div>

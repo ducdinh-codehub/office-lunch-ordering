@@ -5,10 +5,11 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { appSettings, bookings, dayOrders, payments } from "@/db/schema";
+import { appSettings, bookings, dayOrders, payments, users } from "@/db/schema";
 import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
+import { displayNameField } from "@/lib/display-name";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 
 const settingsSchema = z.object({
@@ -141,6 +142,45 @@ const resetSchema = z.object({
  *
  * There is no undo. The typed phrase is the guard.
  */
+const renameMemberSchema = z.object({
+  userId: z.string().uuid(),
+  displayName: displayNameField,
+});
+
+/**
+ * Renames somebody else — for the colleague who never set a name, or the one
+ * showing up as an email prefix on the kitchen list.
+ *
+ * Same column and same rules as the diner's own `/me/profile`, so whoever edits
+ * last wins and neither side can write a name the other could not.
+ */
+export async function renameMember(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { userId, displayName } = renameMemberSchema.parse(input);
+
+    const [updated] = await db
+      .update(users)
+      .set({ displayName })
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+
+    if (!updated) fail("Không tìm thấy người này.");
+
+    // Their name appears on the home greeting, both admin lists and the roster.
+    revalidatePath("/", "layout");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Tên hiển thị không hợp lệ." };
+    }
+    return toActionError(cause, "Không đổi được tên của người này.");
+  }
+}
+
 export async function resetOrderHistory(input: unknown): Promise<ActionResult<number>> {
   try {
     const user = await getCurrentUser();

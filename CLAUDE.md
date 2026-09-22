@@ -54,6 +54,14 @@ insert. The alternative — a Clerk webhook — needs a public URL and a signing
 before anything works locally, which is not worth it at this size. The trade-off is
 that a name or avatar changed in Clerk is not mirrored until the row is recreated.
 
+`users.display_name` is ours, not Clerk's mirror. `/me/profile` lets each person
+rename themselves and `/admin/settings` lets an admin rename anyone; both parse
+`displayNameField` (`src/lib/display-name.ts`), which is the only definition of
+what a name may be — two entry points writing one column must not disagree. Every
+list in the app reads that column, falling back to the email's local part.
+Nothing reads the Clerk name again once the row exists, so the two are expected
+to differ.
+
 **`requireUser()` / `requireAdmin()` must be called at the top of every Server
 Action, not only in layouts.** Middleware and layout checks are routing
 conveniences; actions are separately addressable endpoints. Admin status is
