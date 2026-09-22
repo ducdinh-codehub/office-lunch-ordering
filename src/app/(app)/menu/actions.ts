@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { bookings, menuDays, menuItems, users } from "@/db/schema";
 import { isBookingOpen, bookingClosedReason } from "@/db/queries/menu";
 import { getSetSelectionCounts, syncDayOrder } from "@/db/queries/bookings";
+import { maxSetPicks, offersSet, resolveSetTier } from "@/lib/set-tiers";
 import { getCurrentUser, type SessionUser } from "@/lib/auth/session";
 import {
   actionOk,
@@ -75,6 +76,11 @@ async function loadItem(menuItemId: string) {
       requiredMain: menuDays.requiredMain,
       requiredSide: menuDays.requiredSide,
       requiredVeg: menuDays.requiredVeg,
+      setPriceVnd: menuDays.setPriceVnd,
+      altSetPriceVnd: menuDays.altSetPriceVnd,
+      altRequiredMain: menuDays.altRequiredMain,
+      altRequiredSide: menuDays.altRequiredSide,
+      altRequiredVeg: menuDays.altRequiredVeg,
     })
     .from(menuItems)
     .innerJoin(menuDays, eq(menuDays.id, menuItems.menuDayId))
@@ -116,17 +122,15 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
 
     if (selected) {
       // Enforce the per-category limit here: the UI's disabled checkbox is only
-      // a hint, and two tabs can race past it.
+      // a hint, and two tabs can race past it. The cap is the most generous suất
+      // the day offers — with a 1-món-chính suất beside a 2-món-chính one, the
+      // diner has to be able to reach either.
       const counts = await getSetSelectionCounts(diner.userId, item.menuDayId);
-      const allowed = {
-        main: item.requiredMain,
-        side: item.requiredSide,
-        veg: item.requiredVeg,
-      }[item.category];
+      const allowed = maxSetPicks(item)[item.category];
 
       if (counts[item.category] >= allowed) {
         fail(
-          `Bạn đã chọn đủ ${allowed} ${CATEGORY_LABEL[item.category]}. Hãy bỏ bớt một món trước.`,
+          `Bạn đã chọn tối đa ${allowed} ${CATEGORY_LABEL[item.category]}. Hãy bỏ bớt một món trước.`,
         );
       }
 
@@ -190,14 +194,11 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
     // opens once the set is complete. Removing (quantity 0) always works, so a
     // dish picked earlier can still be dropped if the set falls apart.
     if (item.category === "addon" && quantity > 0) {
-      const dayHasSet = item.requiredMain + item.requiredSide + item.requiredVeg > 0;
-      if (dayHasSet) {
+      if (offersSet(item)) {
         const counts = await getSetSelectionCounts(diner.userId, item.menuDayId);
-        const setComplete =
-          counts.main === item.requiredMain &&
-          counts.side === item.requiredSide &&
-          counts.veg === item.requiredVeg;
-        if (!setComplete) fail("Hãy chọn đủ suất trước khi gọi thêm món.");
+        // Any of the day's suất counts as complete — a 40.000 ₫ one just as much
+        // as a 50.000 ₫ one.
+        if (!resolveSetTier(item, counts)) fail("Hãy chọn đủ suất trước khi gọi thêm món.");
       }
     }
 

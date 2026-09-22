@@ -51,6 +51,11 @@ const upsertDaySchema = z.object({
   requiredMain: z.number().int().min(0).max(10),
   requiredSide: z.number().int().min(0).max(10),
   requiredVeg: z.number().int().min(0).max(10),
+  // The optional second suất. All zero = the day sells one suất only.
+  altSetPriceVnd: z.number().int().min(0).max(100_000_000).default(0),
+  altRequiredMain: z.number().int().min(0).max(10).default(0),
+  altRequiredSide: z.number().int().min(0).max(10).default(0),
+  altRequiredVeg: z.number().int().min(0).max(10).default(0),
   shipFeeVnd: z.number().int().min(0).max(100_000_000),
 });
 
@@ -66,11 +71,27 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
       requiredMain,
       requiredSide,
       requiredVeg,
+      altSetPriceVnd,
+      altRequiredMain,
+      altRequiredSide,
+      altRequiredVeg,
       shipFeeVnd,
     } = upsertDaySchema.parse(input);
 
     const cutoff = orderCutoff ? localInputToInstant(orderCutoff) : null;
     if (cutoff && Number.isNaN(cutoff.getTime())) fail("Thời gian chốt đơn không hợp lệ.");
+
+    // Two suất that ask for the same dishes cannot be told apart by what a diner
+    // picked, so the cheaper would silently swallow the other.
+    const altOffered = altRequiredMain + altRequiredSide + altRequiredVeg > 0;
+    if (
+      altOffered &&
+      altRequiredMain === requiredMain &&
+      altRequiredSide === requiredSide &&
+      altRequiredVeg === requiredVeg
+    ) {
+      fail("Hai suất phải khác nhau về số món, nếu không sẽ không phân biệt được.");
+    }
 
     const dayValues = {
       status,
@@ -80,6 +101,10 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
       requiredMain,
       requiredSide,
       requiredVeg,
+      altSetPriceVnd,
+      altRequiredMain,
+      altRequiredSide,
+      altRequiredVeg,
       shipFeeVnd,
     };
 
@@ -89,8 +114,8 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
       .onConflictDoUpdate({ target: menuDays.serviceDate, set: dayValues })
       .returning({ id: menuDays.id });
 
-    // Changing the required counts can complete or un-complete sets that people
-    // already picked, so re-evaluate every diner for this day.
+    // Changing the required counts can complete, un-complete, or move a diner
+    // between suất, so re-evaluate everyone who picked something for this day.
     await resyncDayOrders(day.id);
 
     // Locking is the moment the order goes to the quán, so it is also the moment
@@ -253,6 +278,10 @@ export async function copyPreviousMenu(input: unknown): Promise<ActionResult<{ c
       requiredMain: source.requiredMain,
       requiredSide: source.requiredSide,
       requiredVeg: source.requiredVeg,
+      altSetPriceVnd: source.altSetPriceVnd,
+      altRequiredMain: source.altRequiredMain,
+      altRequiredSide: source.altRequiredSide,
+      altRequiredVeg: source.altRequiredVeg,
       shipFeeVnd: source.shipFeeVnd,
     };
 

@@ -4,9 +4,9 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db/index.js";
-import { menuDays, menuItems, users, bookings, payments } from "../src/db/schema.js";
+import { menuDays, menuItems, users, bookings, payments, dayOrders } from "../src/db/schema.js";
 import { getMenuDay } from "../src/db/queries/menu.js";
-import { getUserBookingsForDay, getUserDailyTotals, getKitchenSummary, getDayBookingsByPerson, getUserTotalsForDates } from "../src/db/queries/bookings.js";
+import { getUserBookingsForDay, getUserDailyTotals, getKitchenSummary, getDayBookingsByPerson, getUserTotalsForDates, getDayOrdersByPerson, syncDayOrder } from "../src/db/queries/bookings.js";
 import { getUserLedger, getPaymentRoster, getPendingClaims } from "../src/db/queries/payments.js";
 import { getAppSettings } from "../src/db/queries/settings.js";
 import { randomUUID } from "node:crypto";
@@ -66,13 +66,13 @@ check("per-day line totals", aliceD3.map(l => l.lineTotalVnd), [120000, 55000]);
 
 const aliceTotals = await getUserDailyTotals(alice.id, D1, D3);
 check("daily totals (desc)", aliceTotals, [
-  { serviceDate: D3, totalVnd: 175000, itemCount: 3 },
-  { serviceDate: D2, totalVnd: 50000, itemCount: 1 },
-  { serviceDate: D1, totalVnd: 45000, itemCount: 1 },
+  { serviceDate: D3, totalVnd: 175000, itemCount: 3, hasSet: false, shipVnd: 0 },
+  { serviceDate: D2, totalVnd: 50000, itemCount: 1, hasSet: false, shipVnd: 0 },
+  { serviceDate: D1, totalVnd: 45000, itemCount: 1, hasSet: false, shipVnd: 0 },
 ]);
 
 const bobTotals = await getUserDailyTotals(bob.id, D1, D3);
-check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1 }]);
+check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, hasSet: false, shipVnd: 0 }]);
 
 const kitchen = await getKitchenSummary(D3);
 check("kitchen headcount", kitchen.map(k => [k.itemName, k.totalQuantity]), [["Phở bò", 3], ["Cơm tấm", 1]]);
@@ -147,6 +147,49 @@ check("rejected row re-claimed via upsert", [reclaimed[0].status, reclaimed[0].a
 
 ledger = await getUserLedger(alice.id, D1, D3);
 check("ledger after re-claim", ledger.map(e => [e.serviceDate, e.state]), [[D3, "pending"], [D2, "confirmed"], [D1, "pending"]]);
+
+console.log("\n── two suất on one day ──");
+// D4 sells 2+1+1 at 50k and 1+1+1 at 40k. Which suất a diner is on is decided by
+// how many món chính they took, so the same dishes must price two different ways.
+const D4 = "2026-09-17";
+const [d4] = await db.insert(menuDays).values({
+  serviceDate: D4, status: "open", orderCutoff: new Date(Date.now() + 3600_000),
+  setPriceVnd: 50000, requiredMain: 2, requiredSide: 1, requiredVeg: 1,
+  altSetPriceVnd: 40000, altRequiredMain: 1, altRequiredSide: 1, altRequiredVeg: 1,
+}).returning();
+
+const setDishes = await db.insert(menuItems).values([
+  { menuDayId: d4.id, name: "Gà kho", category: "main" as const, priceVnd: 0, sortOrder: 0 },
+  { menuDayId: d4.id, name: "Cá chiên", category: "main" as const, priceVnd: 0, sortOrder: 1 },
+  { menuDayId: d4.id, name: "Trứng chiên", category: "side" as const, priceVnd: 0, sortOrder: 2 },
+  { menuDayId: d4.id, name: "Rau luộc", category: "veg" as const, priceVnd: 0, sortOrder: 3 },
+]).returning();
+const dish = (n: string) => setDishes.find(i => i.name === n)!;
+const pick = (n: string) => db.insert(bookings).values({
+  userId: alice.id, menuDayId: d4.id, menuItemId: dish(n).id, quantity: 1, unitPriceVnd: 0,
+});
+
+await pick("Gà kho"); await pick("Trứng chiên"); await pick("Rau luộc");
+check("1 main completes the cheaper suất", await syncDayOrder(alice.id, d4.id), { complete: true });
+check("charged 40k", (await getDayOrdersByPerson(D4)).map(o => [o.setTier, o.setPriceVnd]), [["alt", 40000]]);
+
+await pick("Cá chiên");
+await syncDayOrder(alice.id, d4.id);
+check("2nd main moves them to the 50k suất", (await getDayOrdersByPerson(D4)).map(o => [o.setTier, o.setPriceVnd]), [["full", 50000]]);
+check("the day's total follows the suất", (await getUserTotalsForDates(alice.id, [D4])).get(D4), 50000);
+
+// A price edit must not move a bill someone already has — only a change of suất does.
+await db.update(menuDays).set({ setPriceVnd: 70000 }).where(eq(menuDays.id, d4.id));
+await syncDayOrder(alice.id, d4.id);
+check("re-pricing the day leaves the existing bill alone", (await getDayOrdersByPerson(D4)).map(o => o.setPriceVnd), [50000]);
+
+await db.delete(bookings).where(eq(bookings.menuItemId, dish("Cá chiên").id));
+await syncDayOrder(alice.id, d4.id);
+check("dropping back to 1 main returns to 40k", (await getDayOrdersByPerson(D4)).map(o => [o.setTier, o.setPriceVnd]), [["alt", 40000]]);
+
+await db.delete(bookings).where(eq(bookings.menuItemId, dish("Rau luộc").id));
+check("an incomplete selection is no suất", await syncDayOrder(alice.id, d4.id), { complete: false });
+check("and is billed nothing", (await db.select().from(dayOrders).where(eq(dayOrders.menuDayId, d4.id))).length, 0);
 
 console.log("\n── settings seed from env ──");
 const settings = await getAppSettings();

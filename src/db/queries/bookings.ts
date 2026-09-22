@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -11,7 +11,9 @@ import {
   users,
   PAID_CATEGORIES,
   type MenuItemCategory,
+  type SetTierKey,
 } from "@/db/schema";
+import { resolveSetTier } from "@/lib/set-tiers";
 import { splitEvenly } from "@/lib/money";
 import type { ServiceDate } from "@/lib/date";
 
@@ -71,7 +73,7 @@ export async function getUserBookingsForDay(
   }));
 }
 
-/** The set price this user locked in for a day, or null if they have no set. */
+/** The suất price this user locked in for a day, or null if they have no set. */
 export async function getUserSetPriceForDay(
   userId: string,
   serviceDate: ServiceDate,
@@ -411,6 +413,7 @@ export type DayOrderPerson = {
   displayName: string | null;
   email: string;
   setPriceVnd: number;
+  setTier: SetTierKey;
 };
 
 /** Who has a complete set for a day, with the price each locked in. */
@@ -423,6 +426,7 @@ export async function getDayOrdersByPerson(
       displayName: users.displayName,
       email: users.email,
       setPriceVnd: dayOrders.setPriceVnd,
+      setTier: dayOrders.setTier,
     })
     .from(dayOrders)
     .innerJoin(users, eq(users.id, dayOrders.userId))
@@ -435,9 +439,11 @@ export async function getDayOrdersByPerson(
  * Recomputes whether a user's set for a day is complete and writes the result.
  *
  * Called after every set-dish change. A complete set gets a `day_orders` row
- * snapshotting today's price; an incomplete one has its row removed, so an
- * abandoned half-selection is never billed. The snapshot is deliberately not
- * refreshed on re-completion — a price edit must not move an existing bill.
+ * snapshotting the price of the tier it completed; an incomplete one has its row
+ * removed, so an abandoned half-selection is never billed. The snapshot is
+ * deliberately not refreshed while the tier stays the same — a price edit must
+ * not move an existing bill — but switching tier is a different suất, so that
+ * does re-price.
  */
 export async function syncDayOrder(
   userId: string,
@@ -449,23 +455,26 @@ export async function syncDayOrder(
   if (!day) return { complete: false };
 
   const counts = await getSetSelectionCounts(userId, menuDayId);
-  const complete =
-    counts.main === day.requiredMain &&
-    counts.side === day.requiredSide &&
-    counts.veg === day.requiredVeg;
+  const tier = resolveSetTier(day, counts);
 
-  if (complete) {
+  if (tier) {
     await db
       .insert(dayOrders)
-      .values({ userId, menuDayId, setPriceVnd: day.setPriceVnd })
-      .onConflictDoNothing({ target: [dayOrders.userId, dayOrders.menuDayId] });
+      .values({ userId, menuDayId, setTier: tier.key, setPriceVnd: tier.priceVnd })
+      .onConflictDoUpdate({
+        target: [dayOrders.userId, dayOrders.menuDayId],
+        set: { setTier: tier.key, setPriceVnd: tier.priceVnd, updatedAt: new Date() },
+        // Only a move between the day's suất rewrites the snapshot. Re-completing
+        // the same tier leaves the price the diner was quoted alone.
+        setWhere: ne(dayOrders.setTier, tier.key),
+      });
   } else {
     await db
       .delete(dayOrders)
       .where(and(eq(dayOrders.userId, userId), eq(dayOrders.menuDayId, menuDayId)));
   }
 
-  return { complete };
+  return { complete: Boolean(tier) };
 }
 
 /**

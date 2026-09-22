@@ -50,6 +50,10 @@ export type MenuEditorProps = {
   requiredMain: number;
   requiredSide: number;
   requiredVeg: number;
+  altSetPriceVnd: number;
+  altRequiredMain: number;
+  altRequiredSide: number;
+  altRequiredVeg: number;
   items: EditorItem[];
   bookedItemIds: string[];
 };
@@ -99,6 +103,20 @@ export function MenuEditor(props: MenuEditorProps) {
   const [requiredSide, setRequiredSide] = useState(String(props.requiredSide));
   const [requiredVeg, setRequiredVeg] = useState(String(props.requiredVeg));
 
+  // The second suất is opt-in: it exists for this day only once it asks for at
+  // least one dish, which is also how the server reads it back.
+  const [altEnabled, setAltEnabled] = useState(
+    props.altRequiredMain + props.altRequiredSide + props.altRequiredVeg > 0,
+  );
+  const [altSetPrice, setAltSetPrice] = useState(String(props.altSetPriceVnd || ""));
+  const [altRequiredMain, setAltRequiredMain] = useState(String(props.altRequiredMain || 1));
+  const [altRequiredSide, setAltRequiredSide] = useState(
+    String(props.altRequiredSide || props.requiredSide),
+  );
+  const [altRequiredVeg, setAltRequiredVeg] = useState(
+    String(props.altRequiredVeg || props.requiredVeg),
+  );
+
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPrice, setNewPrice] = useState("");
@@ -131,6 +149,12 @@ export function MenuEditor(props: MenuEditorProps) {
           requiredMain: Number(requiredMain) || 0,
           requiredSide: Number(requiredSide) || 0,
           requiredVeg: Number(requiredVeg) || 0,
+          // Switched off, the second suất is cleared rather than remembered —
+          // a leftover price with no dishes would read as a suất on offer.
+          altSetPriceVnd: altEnabled ? (parsePrice(altSetPrice) ?? 0) : 0,
+          altRequiredMain: altEnabled ? Number(altRequiredMain) || 0 : 0,
+          altRequiredSide: altEnabled ? Number(altRequiredSide) || 0 : 0,
+          altRequiredVeg: altEnabled ? Number(altRequiredVeg) || 0 : 0,
         }),
       "Đã lưu ngày.",
     );
@@ -220,27 +244,49 @@ export function MenuEditor(props: MenuEditorProps) {
 
             <div className="space-y-1.5">
               <Label>Một suất gồm</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    ["Món chính", requiredMain, setRequiredMain],
-                    ["Món phụ", requiredSide, setRequiredSide],
-                    ["Món rau", requiredVeg, setRequiredVeg],
-                  ] as const
-                ).map(([label, value, setValue]) => (
-                  <div key={label} className="space-y-1">
-                    <Input
-                      inputMode="numeric"
-                      value={value}
-                      onChange={(event) =>
-                        setValue(event.target.value.replace(/[^\d]/g, "").slice(0, 2))
-                      }
-                    />
-                    <p className="text-muted-foreground text-xs">{label}</p>
-                  </div>
-                ))}
-              </div>
+              <RequiredCounts
+                main={[requiredMain, setRequiredMain]}
+                side={[requiredSide, setRequiredSide]}
+                veg={[requiredVeg, setRequiredVeg]}
+              />
             </div>
+          </div>
+
+          {/* A day may sell a second, usually cheaper, suất — the same meal with
+              fewer món chính. The diner never picks a tier by name: the number of
+              dishes they take decides which one they are on, so the two must ask
+              for different amounts. */}
+          <div className="space-y-3 rounded-lg border border-dashed p-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={altEnabled}
+                onCheckedChange={(checked) => setAltEnabled(checked === true)}
+              />
+              Có suất thứ hai (ví dụ suất ít món chính hơn, rẻ hơn)
+            </label>
+
+            {altEnabled && (
+              <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
+                <div className="space-y-1.5">
+                  <Label htmlFor="alt-set-price">Giá suất 2 (VND)</Label>
+                  <Input
+                    id="alt-set-price"
+                    inputMode="numeric"
+                    value={altSetPrice}
+                    placeholder="40000"
+                    onChange={(event) => setAltSetPrice(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Suất 2 gồm</Label>
+                  <RequiredCounts
+                    main={[altRequiredMain, setAltRequiredMain]}
+                    side={[altRequiredSide, setAltRequiredSide]}
+                    veg={[altRequiredVeg, setAltRequiredVeg]}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <p className="text-muted-foreground text-xs">
@@ -250,6 +296,8 @@ export function MenuEditor(props: MenuEditorProps) {
           </p>
           <p className="text-muted-foreground text-xs">
             Đổi số lượng món ở đây sẽ tính lại suất của những người đã chọn món cho ngày này.
+            Khi có hai suất, người đặt chọn suất nào là do số món họ chọn quyết định, nên hai
+            suất phải khác nhau về số món.
           </p>
 
           <div className="space-y-1.5">
@@ -387,6 +435,38 @@ export function MenuEditor(props: MenuEditorProps) {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** The three "một suất gồm" boxes — món chính / phụ / rau. */
+function RequiredCounts({
+  main,
+  side,
+  veg,
+}: {
+  main: readonly [string, (value: string) => void];
+  side: readonly [string, (value: string) => void];
+  veg: readonly [string, (value: string) => void];
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {(
+        [
+          ["Món chính", main],
+          ["Món phụ", side],
+          ["Món rau", veg],
+        ] as const
+      ).map(([label, [value, setValue]]) => (
+        <div key={label} className="space-y-1">
+          <Input
+            inputMode="numeric"
+            value={value}
+            onChange={(event) => setValue(event.target.value.replace(/[^\d]/g, "").slice(0, 2))}
+          />
+          <p className="text-muted-foreground text-xs">{label}</p>
+        </div>
+      ))}
     </div>
   );
 }

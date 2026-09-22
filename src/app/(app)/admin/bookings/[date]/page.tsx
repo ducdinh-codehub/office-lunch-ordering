@@ -72,6 +72,19 @@ export default async function AdminDayBookingsPage({
   // Set dishes are covered by the suất price; only add-ons and drinks are billed
   // per portion, so the day's money is sets + paid lines.
   const setTotalVnd = setOrders.reduce((total, order) => total + order.setPriceVnd, 0);
+  // A day can sell two suất, and a price edit can leave older snapshots behind,
+  // so the quán is told how many of each price rather than one bare headcount.
+  const setGroups = [
+    ...setOrders
+      .reduce(
+        (groups, order) =>
+          groups.set(order.setPriceVnd, (groups.get(order.setPriceVnd) ?? 0) + 1),
+        new Map<number, number>(),
+      )
+      .entries(),
+  ]
+    .map(([priceVnd, count]) => ({ priceVnd, count }))
+    .sort((a, b) => b.priceVnd - a.priceVnd);
   const paidTotalVnd = ordered
     .filter((line) => line.category === "addon" || line.category === "drink")
     .reduce((total, line) => total + line.totalQuantity * line.priceVnd, 0);
@@ -91,7 +104,9 @@ export default async function AdminDayBookingsPage({
   // What gets pasted into the chat with the quán.
   const kitchenText = [
     `Đơn cơm trưa — ${formatServiceDate(date)}`,
-    `${setOrders.length} suất`,
+    ...(setGroups.length > 1
+      ? setGroups.map((group) => `${group.count} suất ${formatVnd(group.priceVnd)}`)
+      : [`${setOrders.length} suất`]),
     ...SECTIONS.flatMap(({ category, label }) => {
       const lines = linesFor([category]);
       if (lines.length === 0) return [];
@@ -237,13 +252,33 @@ export default async function AdminDayBookingsPage({
                     </Fragment>
                   );
                 })}
-                <TableRow>
-                  <TableCell className="font-medium">Suất cơm</TableCell>
-                  <TableCell className="text-right tabular-nums">{setOrders.length}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {formatVnd(setTotalVnd)}
-                  </TableCell>
-                </TableRow>
+                {setGroups.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="font-medium">Suất cơm</TableCell>
+                    <TableCell className="text-right tabular-nums">0</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatVnd(0)}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  setGroups.map((group) => (
+                    <TableRow key={group.priceVnd}>
+                      <TableCell className="font-medium">
+                        Suất cơm
+                        {setGroups.length > 1 && (
+                          <span className="text-muted-foreground text-xs">
+                            {" "}
+                            {formatVnd(group.priceVnd)}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{group.count}</TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatVnd(group.count * group.priceVnd)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
                 {shipFeeVnd > 0 && (
                   <TableRow>
                     <TableCell className="font-medium">

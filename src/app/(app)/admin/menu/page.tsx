@@ -113,6 +113,10 @@ export default async function AdminMenuPage({
         requiredMain={day?.requiredMain ?? 2}
         requiredSide={day?.requiredSide ?? 1}
         requiredVeg={day?.requiredVeg ?? 1}
+        altSetPriceVnd={day?.altSetPriceVnd ?? 0}
+        altRequiredMain={day?.altRequiredMain ?? 0}
+        altRequiredSide={day?.altRequiredSide ?? 0}
+        altRequiredVeg={day?.altRequiredVeg ?? 0}
         items={day?.items ?? []}
         bookedItemIds={bookedItemIds}
       />

@@ -7,6 +7,14 @@ import { MenuItemRow } from "./menu-item-row";
 import { SetDishRow } from "./set-dish-row";
 import { MenuSection } from "./menu-section";
 import { bookingClosedReason, isBookingOpen, type MenuDayWithItems } from "@/db/queries/menu";
+import {
+  maxSetPicks,
+  missingFor,
+  resolveSetTier,
+  setTiers,
+  type SetCounts,
+  type SetTier,
+} from "@/lib/set-tiers";
 import { getShipShares, getUserBookingsForDay, getUserSetPriceForDay } from "@/db/queries/bookings";
 import { formatInstant, formatServiceDate, type ServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
@@ -71,25 +79,26 @@ export async function MenuDayView({
   const itemsIn = (category: MenuItemCategory) =>
     day.items.filter((item) => item.category === category);
 
-  const required = { main: day.requiredMain, side: day.requiredSide, veg: day.requiredVeg };
-  const picked = {
+  // A day offers one suất, or two — e.g. 1 món chính at 40.000 ₫ beside 2 at
+  // 50.000 ₫. Which one a diner is on follows from what they picked.
+  const tiers = setTiers(day);
+  const maxPicks = maxSetPicks(day);
+  const picked: SetCounts = {
     main: countPicked(myBookings, itemsIn("main")),
     side: countPicked(myBookings, itemsIn("side")),
     veg: countPicked(myBookings, itemsIn("veg")),
   };
 
-  // The set is offered only if the day actually has set dishes to pick from.
-  const offersSet = SET_SECTIONS.some(({ category }) => itemsIn(category).length > 0);
-  const setComplete =
-    offersSet &&
-    picked.main === required.main &&
-    picked.side === required.side &&
-    picked.veg === required.veg;
+  // The suất is offered only if the day actually has set dishes to pick from.
+  const offersSet =
+    tiers.length > 0 && SET_SECTIONS.some(({ category }) => itemsIn(category).length > 0);
+  const currentTier = offersSet ? resolveSetTier(day, picked) : null;
+  const setComplete = Boolean(currentTier);
   const setStarted = picked.main + picked.side + picked.veg > 0;
 
-  // What they'd owe: the locked-in price once complete, today's price as a
-  // preview while they're still choosing.
-  const setPrice = lockedSetPrice ?? day.setPriceVnd;
+  // What they'd owe: the price locked in on their day_orders row, today's price
+  // of the tier they have completed otherwise.
+  const setPrice = lockedSetPrice ?? currentTier?.priceVnd ?? 0;
   const dayTotal = (setComplete ? setPrice : 0) + paidTotal + myShipVnd;
 
   return (
@@ -98,11 +107,18 @@ export async function MenuDayView({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-lg">{formatServiceDate(serviceDate)}</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            {offersSet && day.setPriceVnd > 0 && (
-              <Badge variant="outline" className="tabular-nums">
-                Suất {formatVnd(day.setPriceVnd)}
-              </Badge>
-            )}
+            {offersSet &&
+              tiers
+                .filter((tier) => tier.priceVnd > 0)
+                .map((tier) => (
+                  <Badge
+                    key={tier.key}
+                    variant={currentTier?.key === tier.key ? "default" : "outline"}
+                    className="tabular-nums"
+                  >
+                    Suất {formatVnd(tier.priceVnd)}
+                  </Badge>
+                ))}
             {day.shipFeeVnd > 0 && (
               <Badge variant="outline" className="tabular-nums">
                 Ship {formatVnd(day.shipFeeVnd)} chia đều
@@ -138,7 +154,7 @@ export async function MenuDayView({
 
         {offersSet && (
           <>
-            {/* Where the diner stands against the 2 + 1 + 1 rule. */}
+            {/* Where the diner stands against the day's suất. */}
             <div
               className={`rounded-lg border px-3 py-2.5 text-sm ${
                 setComplete
@@ -146,32 +162,62 @@ export async function MenuDayView({
                   : "bg-muted/50"
               }`}
             >
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                {setComplete ? (
-                  <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
-                    <Check className="size-4" />
-                    Suất của bạn đã đủ món
-                  </span>
-                ) : (
-                  <span className="font-medium">
-                    {setStarted ? "Suất chưa đủ món" : "Chọn đủ món để đặt suất"}
-                  </span>
-                )}
-                {SET_SECTIONS.filter(({ category }) => required[category] > 0).map(
-                  ({ category, label }) => (
-                    <span
-                      key={category}
-                      className={
-                        picked[category] === required[category]
-                          ? "text-emerald-700 dark:text-emerald-400"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      {label} {picked[category]}/{required[category]}
+              {tiers.length === 1 ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {setComplete ? (
+                    <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+                      <Check className="size-4" />
+                      Suất của bạn đã đủ món
                     </span>
-                  ),
-                )}
-              </div>
+                  ) : (
+                    <span className="font-medium">
+                      {setStarted ? "Suất chưa đủ món" : "Chọn đủ món để đặt suất"}
+                    </span>
+                  )}
+                  {SET_SECTIONS.filter(({ category }) => tiers[0].required[category] > 0).map(
+                    ({ category, label }) => (
+                      <span
+                        key={category}
+                        className={
+                          picked[category] === tiers[0].required[category]
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-muted-foreground"
+                        }
+                      >
+                        {label} {picked[category]}/{tiers[0].required[category]}
+                      </span>
+                    ),
+                  )}
+                </div>
+              ) : (
+                /* Two suất on offer: show them as the choices they are, each with
+                   how far off it is, so the diner sees what a món chính more or
+                   less would cost them. */
+                <div className="space-y-1.5">
+                  <p className="font-medium">
+                    {setComplete ? "Suất của bạn" : "Chọn một suất"}
+                  </p>
+                  {tiers.map((tier) => {
+                    const status = tierStatus(tier, picked);
+                    const isCurrent = currentTier?.key === tier.key;
+                    return (
+                      <div
+                        key={tier.key}
+                        className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 ${
+                          isCurrent
+                            ? "font-medium text-emerald-800 dark:text-emerald-300"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {isCurrent && <Check className="size-4 shrink-0" />}
+                        <span className="tabular-nums">Suất {formatVnd(tier.priceVnd)}</span>
+                        <span className="text-xs">{tierComposition(tier)}</span>
+                        <span className="text-xs">— {status}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {!setComplete && setStarted && (
                 <p className="text-muted-foreground mt-1 text-xs">
                   Chưa đủ món thì suất chưa được tính tiền và bếp chưa nhận.
@@ -182,14 +228,16 @@ export async function MenuDayView({
             {SET_SECTIONS.map(({ category, label, emoji }) => {
               const items = itemsIn(category);
               if (items.length === 0) return null;
-              const full = picked[category] >= required[category];
+              // The cap is the most generous tier: on a day selling 1 or 2 món
+              // chính, a diner picking their first one is not finished yet.
+              const full = picked[category] >= maxPicks[category];
 
               return (
                 <MenuSection
                   key={category}
                   emoji={emoji}
                   label={label}
-                  hint={`chọn ${required[category]}`}
+                  hint={`chọn ${allowedPicksLabel(tiers, category)}`}
                   summary={
                     <span
                       className={
@@ -198,7 +246,7 @@ export async function MenuDayView({
                           : "text-muted-foreground"
                       }
                     >
-                      {picked[category]}/{required[category]}
+                      {picked[category]}/{maxPicks[category]}
                       {full ? " — đã đủ" : ""}
                     </span>
                   }
@@ -313,6 +361,38 @@ export async function MenuDayView({
       </CardContent>
     </Card>
   );
+}
+
+/** e.g. "2 món chính · 1 món phụ · 1 món rau" — what a suất is made of. */
+function tierComposition(tier: SetTier): string {
+  return SET_SECTIONS.filter(({ category }) => tier.required[category] > 0)
+    .map(({ category, label }) => `${tier.required[category]} ${label.toLowerCase()}`)
+    .join(" · ");
+}
+
+/** How far a selection is from one suất, in the diner's own words. */
+function tierStatus(tier: SetTier, picked: SetCounts): string {
+  const missing = missingFor(tier, picked);
+  const phrase = (sign: 1 | -1) =>
+    SET_SECTIONS.filter(({ category }) => missing[category] * sign > 0)
+      .map(({ category, label }) => `${missing[category] * sign} ${label.toLowerCase()}`)
+      .join(", ");
+
+  const short = phrase(1);
+  if (short) return `còn thiếu ${short}`;
+
+  const over = phrase(-1);
+  if (over) return `bỏ bớt ${over}`;
+
+  return "đã đủ món";
+}
+
+/** "1" or "1 hoặc 2" — how many dishes of a category the day's suất take. */
+function allowedPicksLabel(tiers: SetTier[], category: "main" | "side" | "veg"): string {
+  const counts = [...new Set(tiers.map((tier) => tier.required[category]))].sort(
+    (a, b) => a - b,
+  );
+  return counts.join(" hoặc ");
 }
 
 /** How many of `items` the diner has booked. */

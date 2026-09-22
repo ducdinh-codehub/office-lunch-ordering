@@ -72,6 +72,13 @@ bug, not a style issue.
 - **Prices are snapshotted.** `bookings.unit_price_vnd` is copied from the menu item
   at booking time. Editing a menu price must never change a bill someone already
   has. `menu_items.price_vnd` is only ever the *current* advertised price.
+- **A day may sell two suất, told apart only by dish count.** `menu_days` carries
+  a second, optional set of required counts (`alt_required_*`) and its own price —
+  e.g. 1 món chính at 40k beside 2 at 50k. Nobody picks a tier by name: whichever
+  tier the picks match exactly is the one they are on (`src/lib/set-tiers.ts` is
+  the single place that decides), so the two tiers must never ask for the same
+  dishes. `day_orders.set_tier` records which one, and moving between tiers
+  rewrites the price snapshot — that is not a re-pricing, it is a different suất.
 - **"Unpaid" is the absence of a `payments` row.** Rows are created only when
   someone claims payment, so nothing materialises a row per person per day. Days
   settled by one bank transfer share a `claim_id`, which is what lets the admin

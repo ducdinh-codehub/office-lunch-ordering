@@ -23,6 +23,12 @@ export const menuDayStatus = pgEnum("menu_day_status", [
 export const bookingStatus = pgEnum("booking_status", ["booked", "cancelled"]);
 
 /**
+ * Which suất a diner took. A day offers one by default; `alt` is the optional
+ * second option — typically the same meal with fewer món chính for less money.
+ */
+export const setTier = pgEnum("set_tier", ["full", "alt"]);
+
+/**
  * Where a dish sits in the menu. The first three make up the fixed-price set
  * (suất): the diner picks a required number from each and the set price covers
  * them, so their `price_vnd` is always 0. `addon` and `drink` are charged per
@@ -80,6 +86,13 @@ export const menuDays = pgTable("menu_days", {
   requiredMain: integer("required_main").notNull().default(2),
   requiredSide: integer("required_side").notNull().default(1),
   requiredVeg: integer("required_veg").notNull().default(1),
+  // The optional second suất: its own price and its own required counts, e.g.
+  // 1 món chính at 40k beside the 2 at 50k above. It is on offer only when it
+  // asks for at least one dish — 0/0/0, the default, means one suất only.
+  altSetPriceVnd: integer("alt_set_price_vnd").notNull().default(0),
+  altRequiredMain: integer("alt_required_main").notNull().default(0),
+  altRequiredSide: integer("alt_required_side").notNull().default(0),
+  altRequiredVeg: integer("alt_required_veg").notNull().default(0),
   // One delivery fee for the whole order, split equally between that day's
   // diners. 0 means no fee.
   shipFeeVnd: integer("ship_fee_vnd").notNull().default(0),
@@ -123,7 +136,8 @@ export const menuItems = pgTable(
  * absence means "no suất today", so an unfinished selection is never billed.
  *
  * `setPriceVnd` is a snapshot, like `bookings.unit_price_vnd`: re-pricing the
- * day afterwards must not move a bill someone already has.
+ * day afterwards must not move a bill someone already has. Switching to the
+ * day's other suất is not a re-pricing — that writes a new snapshot.
  */
 export const dayOrders = pgTable(
   "day_orders",
@@ -136,6 +150,9 @@ export const dayOrders = pgTable(
       .notNull()
       .references(() => menuDays.id, { onDelete: "cascade" }),
     setPriceVnd: integer("set_price_vnd").notNull(),
+    // Which of the day's suất this is. Stored so that moving between tiers
+    // re-prices the row while a price edit alone still never does.
+    setTier: setTier("set_tier").notNull().default("full"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -281,3 +298,4 @@ export type Booking = typeof bookings.$inferSelect;
 export type DayOrder = typeof dayOrders.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
+export type SetTierKey = (typeof setTier.enumValues)[number];
