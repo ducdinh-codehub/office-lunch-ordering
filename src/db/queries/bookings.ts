@@ -10,6 +10,7 @@ import {
   menuItems,
   users,
   PAID_CATEGORIES,
+  SET_CATEGORIES,
   type MenuItemCategory,
   type SetTierKey,
 } from "@/db/schema";
@@ -40,10 +41,16 @@ export type BookingLine = {
   note: string | null;
 };
 
-/** One user's active bookings for a single day, set dishes included. */
+/**
+ * One user's active bookings for a single menu, set dishes included.
+ *
+ * Keyed on the menu, not the date: a date can hold a lunch and an afternoon
+ * party, and folding the two together would show the party's dishes inside the
+ * lunch card and count them towards its suất.
+ */
 export async function getUserBookingsForDay(
   userId: string,
-  serviceDate: ServiceDate,
+  menuDayId: string,
 ): Promise<BookingLine[]> {
   const rows = await db
     .select({
@@ -57,12 +64,11 @@ export async function getUserBookingsForDay(
     })
     .from(bookings)
     .innerJoin(menuItems, eq(menuItems.id, bookings.menuItemId))
-    .innerJoin(menuDays, eq(menuDays.id, bookings.menuDayId))
     .where(
       and(
         eq(bookings.userId, userId),
         eq(bookings.status, "booked"),
-        eq(menuDays.serviceDate, serviceDate),
+        eq(bookings.menuDayId, menuDayId),
       ),
     )
     .orderBy(asc(menuItems.sortOrder), asc(menuItems.name));
@@ -73,16 +79,15 @@ export async function getUserBookingsForDay(
   }));
 }
 
-/** The suất price this user locked in for a day, or null if they have no set. */
+/** The suất price this user locked in for a menu, or null if they have no set. */
 export async function getUserSetPriceForDay(
   userId: string,
-  serviceDate: ServiceDate,
+  menuDayId: string,
 ): Promise<number | null> {
   const row = await db
     .select({ setPriceVnd: dayOrders.setPriceVnd })
     .from(dayOrders)
-    .innerJoin(menuDays, eq(menuDays.id, dayOrders.menuDayId))
-    .where(and(eq(dayOrders.userId, userId), eq(menuDays.serviceDate, serviceDate)))
+    .where(and(eq(dayOrders.userId, userId), eq(dayOrders.menuDayId, menuDayId)))
     .then((rows) => rows[0]);
 
   return row?.setPriceVnd ?? null;
@@ -92,9 +97,22 @@ export type DailyTotal = {
   serviceDate: ServiceDate;
   totalVnd: number;
   itemCount: number;
-  /** True once the set was completed and the set price is being charged. */
-  hasSet: boolean;
-  /** This person's slice of the day's delivery fee. */
+  /**
+   * How many suất this person is charged for on this date. Normally 0 or 1, but
+   * a date selling an afternoon party alongside lunch can bill two.
+   */
+  setCount: number;
+  /**
+   * True when they started a suất somewhere that day and did not finish it —
+   * picked at least one món chính / phụ / rau on a menu with no completed set.
+   *
+   * Not the same as "no suất": a per-dish menu, an afternoon party included,
+   * has no suất to be incomplete, and neither does a date where the only
+   * bookings are drinks and gọi thêm. Saying otherwise sends people looking for
+   * a dish they were never asked to pick.
+   */
+  incompleteSet: boolean;
+  /** This person's slice of the day's delivery fee, across every menu that day. */
   shipVnd: number;
 };
 
@@ -102,6 +120,11 @@ export type DailyTotal = {
  * What each day cost a user, across a date range. This is the single source of
  * truth for "amount owed" — payment amounts are always recomputed from here,
  * never taken from the client.
+ *
+ * One row per *date*, not per menu: a lunch and an afternoon party on the same
+ * day are summed into a single amount, because they are settled by a single
+ * bank transfer. `payments` is keyed the same way, and that is what keeps the
+ * two in step.
  *
  * A day with dishes picked but an unfinished set still appears, at 0 ₫: nothing
  * is owed until the set is complete, but the diner should still see their day.
@@ -113,7 +136,7 @@ export async function getUserDailyTotals(
 ): Promise<DailyTotal[]> {
   const inRange = and(gte(menuDays.serviceDate, from), lte(menuDays.serviceDate, to));
 
-  const [itemRows, setRows, shipShares] = await Promise.all([
+  const [itemRows, setRows, setPickRows, shipShares] = await Promise.all([
     db
       .select({
         serviceDate: menuDays.serviceDate,
@@ -126,10 +149,33 @@ export async function getUserDailyTotals(
       .where(and(eq(bookings.userId, userId), eq(bookings.status, "booked"), inRange))
       .groupBy(menuDays.serviceDate),
     db
-      .select({ serviceDate: menuDays.serviceDate, setPriceVnd: dayOrders.setPriceVnd })
+      .select({
+        serviceDate: menuDays.serviceDate,
+        menuDayId: dayOrders.menuDayId,
+        setPriceVnd: dayOrders.setPriceVnd,
+      })
       .from(dayOrders)
       .innerJoin(menuDays, eq(menuDays.id, dayOrders.menuDayId))
       .where(and(eq(dayOrders.userId, userId), inRange)),
+    // Menus where they took a set dish. Compared against the completed sets
+    // above, this is what separates "your suất is short a món" from "this menu
+    // never had a suất".
+    db
+      .selectDistinct({
+        serviceDate: menuDays.serviceDate,
+        menuDayId: bookings.menuDayId,
+      })
+      .from(bookings)
+      .innerJoin(menuItems, eq(menuItems.id, bookings.menuItemId))
+      .innerJoin(menuDays, eq(menuDays.id, bookings.menuDayId))
+      .where(
+        and(
+          eq(bookings.userId, userId),
+          eq(bookings.status, "booked"),
+          inArray(menuItems.category, [...SET_CATEGORIES]),
+          inRange,
+        ),
+      ),
     getShipShares({ from, to }),
   ]);
 
@@ -139,7 +185,8 @@ export async function getUserDailyTotals(
       serviceDate: row.serviceDate,
       totalVnd: Number(row.paidVnd ?? 0),
       itemCount: Number(row.itemCount ?? 0),
-      hasSet: false,
+      setCount: 0,
+      incompleteSet: false,
       shipVnd: 0,
     });
   }
@@ -147,17 +194,25 @@ export async function getUserDailyTotals(
     const existing = byDate.get(row.serviceDate);
     if (existing) {
       existing.totalVnd += row.setPriceVnd;
-      existing.hasSet = true;
+      existing.setCount += 1;
     } else {
       // A set with no booking rows can't happen, but never drop money if it does.
       byDate.set(row.serviceDate, {
         serviceDate: row.serviceDate,
         totalVnd: row.setPriceVnd,
         itemCount: 0,
-        hasSet: true,
+        setCount: 1,
+        incompleteSet: false,
         shipVnd: 0,
       });
     }
+  }
+
+  const completedMenus = new Set(setRows.map((row) => row.menuDayId));
+  for (const row of setPickRows) {
+    if (completedMenus.has(row.menuDayId)) continue;
+    const existing = byDate.get(row.serviceDate);
+    if (existing) existing.incompleteSet = true;
   }
 
   for (const share of shipShares) {
@@ -165,7 +220,10 @@ export async function getUserDailyTotals(
     const existing = byDate.get(share.serviceDate);
     if (existing) {
       existing.totalVnd += share.shareVnd;
-      existing.shipVnd = share.shareVnd;
+      // Two menus on one date each carry their own delivery, so this adds up
+      // rather than overwrites — otherwise the displayed fee would disagree
+      // with the total it is part of.
+      existing.shipVnd += share.shareVnd;
     }
   }
 
@@ -261,7 +319,13 @@ async function getDinerIds(menuDayIds: string[]): Promise<Map<string, string[]>>
   return new Map([...byDay].map(([dayId, ids]) => [dayId, [...ids].sort()]));
 }
 
-export type ShipShare = { userId: string; serviceDate: ServiceDate; shareVnd: number };
+export type ShipShare = {
+  userId: string;
+  serviceDate: ServiceDate;
+  /** Which menu the fee is for — a date with two sittings produces two shares. */
+  menuDayId: string;
+  shareVnd: number;
+};
 
 /**
  * Each diner's slice of the ship fee, for a set of days.
@@ -309,7 +373,9 @@ export async function getShipShares(
 
     diners.forEach((userId, index) => {
       const shareVnd = amounts[index];
-      if (shareVnd) shares.push({ userId, serviceDate: day.serviceDate, shareVnd });
+      if (shareVnd) {
+        shares.push({ userId, serviceDate: day.serviceDate, menuDayId: day.id, shareVnd });
+      }
     });
   }
   return shares;
@@ -337,8 +403,14 @@ export type KitchenLine = {
   totalQuantity: number;
 };
 
-/** Headcount per dish for one day — what you send to the restaurant. */
-export async function getKitchenSummary(serviceDate: ServiceDate): Promise<KitchenLine[]> {
+/**
+ * Headcount per dish for one menu — what you send to the restaurant.
+ *
+ * Keyed on the menu rather than the date: lunch and an afternoon party go to
+ * different kitchens at different times, and one combined list would be wrong
+ * for both.
+ */
+export async function getKitchenSummary(menuDayId: string): Promise<KitchenLine[]> {
   return db
     .select({
       menuItemId: menuItems.id,
@@ -348,12 +420,11 @@ export async function getKitchenSummary(serviceDate: ServiceDate): Promise<Kitch
       totalQuantity: sql<number>`coalesce(sum(${bookings.quantity}), 0)::int`,
     })
     .from(menuItems)
-    .innerJoin(menuDays, eq(menuDays.id, menuItems.menuDayId))
     .leftJoin(
       bookings,
       and(eq(bookings.menuItemId, menuItems.id), eq(bookings.status, "booked")),
     )
-    .where(eq(menuDays.serviceDate, serviceDate))
+    .where(eq(menuItems.menuDayId, menuDayId))
     .groupBy(
       menuItems.id,
       menuItems.name,
@@ -364,13 +435,12 @@ export async function getKitchenSummary(serviceDate: ServiceDate): Promise<Kitch
     .orderBy(asc(menuItems.sortOrder), asc(menuItems.name));
 }
 
-/** How many complete sets to order for a day. */
-export async function getSetCountForDay(serviceDate: ServiceDate): Promise<number> {
+/** How many complete sets to order for a menu. */
+export async function getSetCountForDay(menuDayId: string): Promise<number> {
   const row = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(dayOrders)
-    .innerJoin(menuDays, eq(menuDays.id, dayOrders.menuDayId))
-    .where(eq(menuDays.serviceDate, serviceDate))
+    .where(eq(dayOrders.menuDayId, menuDayId))
     .then((rows) => rows[0]);
 
   return Number(row?.count ?? 0);
@@ -387,8 +457,8 @@ export type PersonLine = {
   note: string | null;
 };
 
-/** Per-person breakdown for one day — who ordered what. */
-export async function getDayBookingsByPerson(serviceDate: ServiceDate): Promise<PersonLine[]> {
+/** Per-person breakdown for one menu — who ordered what. */
+export async function getDayBookingsByPerson(menuDayId: string): Promise<PersonLine[]> {
   return db
     .select({
       userId: users.id,
@@ -403,8 +473,7 @@ export async function getDayBookingsByPerson(serviceDate: ServiceDate): Promise<
     .from(bookings)
     .innerJoin(users, eq(users.id, bookings.userId))
     .innerJoin(menuItems, eq(menuItems.id, bookings.menuItemId))
-    .innerJoin(menuDays, eq(menuDays.id, bookings.menuDayId))
-    .where(and(eq(menuDays.serviceDate, serviceDate), eq(bookings.status, "booked")))
+    .where(and(eq(bookings.menuDayId, menuDayId), eq(bookings.status, "booked")))
     .orderBy(asc(users.displayName), asc(users.email), asc(menuItems.sortOrder));
 }
 
@@ -416,10 +485,8 @@ export type DayOrderPerson = {
   setTier: SetTierKey;
 };
 
-/** Who has a complete set for a day, with the price each locked in. */
-export async function getDayOrdersByPerson(
-  serviceDate: ServiceDate,
-): Promise<DayOrderPerson[]> {
+/** Who has a complete set for a menu, with the price each locked in. */
+export async function getDayOrdersByPerson(menuDayId: string): Promise<DayOrderPerson[]> {
   return db
     .select({
       userId: users.id,
@@ -430,8 +497,7 @@ export async function getDayOrdersByPerson(
     })
     .from(dayOrders)
     .innerJoin(users, eq(users.id, dayOrders.userId))
-    .innerJoin(menuDays, eq(menuDays.id, dayOrders.menuDayId))
-    .where(eq(menuDays.serviceDate, serviceDate))
+    .where(eq(dayOrders.menuDayId, menuDayId))
     .orderBy(asc(users.displayName), asc(users.email));
 }
 

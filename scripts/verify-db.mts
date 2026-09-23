@@ -5,7 +5,8 @@
 import { eq } from "drizzle-orm";
 import { db } from "../src/db/index.js";
 import { menuDays, menuItems, users, bookings, payments, dayOrders } from "../src/db/schema.js";
-import { getMenuDay } from "../src/db/queries/menu.js";
+import { getMenuDay, getMenuDaysForDate } from "../src/db/queries/menu.js";
+import { cutoffOrderError, resolveActiveSlot } from "../src/lib/menu-slot.js";
 import { getUserBookingsForDay, getUserDailyTotals, getKitchenSummary, getDayBookingsByPerson, getUserTotalsForDates, getDayOrdersByPerson, syncDayOrder } from "../src/db/queries/bookings.js";
 import { getUserLedger, getPaymentRoster, getPendingClaims } from "../src/db/queries/payments.js";
 import { getAppSettings } from "../src/db/queries/settings.js";
@@ -61,26 +62,26 @@ console.log("\n── reads ──");
 const menu = await getMenuDay(D3);
 check("menu day loads with items in sort order", menu?.items.map(i => i.name), ["Phở bò", "Cơm tấm"]);
 
-const aliceD3 = await getUserBookingsForDay(alice.id, D3);
+const aliceD3 = await getUserBookingsForDay(alice.id, byDate.get(D3)!.id);
 check("per-day line totals", aliceD3.map(l => l.lineTotalVnd), [120000, 55000]);
 
 const aliceTotals = await getUserDailyTotals(alice.id, D1, D3);
 check("daily totals (desc)", aliceTotals, [
-  { serviceDate: D3, totalVnd: 175000, itemCount: 3, hasSet: false, shipVnd: 0 },
-  { serviceDate: D2, totalVnd: 50000, itemCount: 1, hasSet: false, shipVnd: 0 },
-  { serviceDate: D1, totalVnd: 45000, itemCount: 1, hasSet: false, shipVnd: 0 },
+  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0 },
+  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0 },
+  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0 },
 ]);
 
 const bobTotals = await getUserDailyTotals(bob.id, D1, D3);
-check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, hasSet: false, shipVnd: 0 }]);
+check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0 }]);
 
-const kitchen = await getKitchenSummary(D3);
+const kitchen = await getKitchenSummary(byDate.get(D3)!.id);
 check("kitchen headcount", kitchen.map(k => [k.itemName, k.totalQuantity]), [["Phở bò", 3], ["Cơm tấm", 1]]);
 
-const kitchenD1 = await getKitchenSummary(D1);
+const kitchenD1 = await getKitchenSummary(byDate.get(D1)!.id);
 check("kitchen ignores cancelled", kitchenD1.map(k => k.totalQuantity), [1]);
 
-const people = await getDayBookingsByPerson(D3);
+const people = await getDayBookingsByPerson(byDate.get(D3)!.id);
 check("per-person rows on D3", people.length, 3);
 
 console.log("\n── ledger before payment ──");
@@ -171,25 +172,131 @@ const pick = (n: string) => db.insert(bookings).values({
 
 await pick("Gà kho"); await pick("Trứng chiên"); await pick("Rau luộc");
 check("1 main completes the cheaper suất", await syncDayOrder(alice.id, d4.id), { complete: true });
-check("charged 40k", (await getDayOrdersByPerson(D4)).map(o => [o.setTier, o.setPriceVnd]), [["alt", 40000]]);
+check("charged 40k", (await getDayOrdersByPerson(d4.id)).map(o => [o.setTier, o.setPriceVnd]), [["alt", 40000]]);
 
 await pick("Cá chiên");
 await syncDayOrder(alice.id, d4.id);
-check("2nd main moves them to the 50k suất", (await getDayOrdersByPerson(D4)).map(o => [o.setTier, o.setPriceVnd]), [["full", 50000]]);
+check("2nd main moves them to the 50k suất", (await getDayOrdersByPerson(d4.id)).map(o => [o.setTier, o.setPriceVnd]), [["full", 50000]]);
 check("the day's total follows the suất", (await getUserTotalsForDates(alice.id, [D4])).get(D4), 50000);
 
 // A price edit must not move a bill someone already has — only a change of suất does.
 await db.update(menuDays).set({ setPriceVnd: 70000 }).where(eq(menuDays.id, d4.id));
 await syncDayOrder(alice.id, d4.id);
-check("re-pricing the day leaves the existing bill alone", (await getDayOrdersByPerson(D4)).map(o => o.setPriceVnd), [50000]);
+check("re-pricing the day leaves the existing bill alone", (await getDayOrdersByPerson(d4.id)).map(o => o.setPriceVnd), [50000]);
 
 await db.delete(bookings).where(eq(bookings.menuItemId, dish("Cá chiên").id));
 await syncDayOrder(alice.id, d4.id);
-check("dropping back to 1 main returns to 40k", (await getDayOrdersByPerson(D4)).map(o => [o.setTier, o.setPriceVnd]), [["alt", 40000]]);
+check("dropping back to 1 main returns to 40k", (await getDayOrdersByPerson(d4.id)).map(o => [o.setTier, o.setPriceVnd]), [["alt", 40000]]);
 
 await db.delete(bookings).where(eq(bookings.menuItemId, dish("Rau luộc").id));
 check("an incomplete selection is no suất", await syncDayOrder(alice.id, d4.id), { complete: false });
 check("and is billed nothing", (await db.select().from(dayOrders).where(eq(dayOrders.menuDayId, d4.id))).length, 0);
+
+// D4 was left with 1 món chính + 1 món phụ and no rau — a started suất that
+// completes no tier. That, and only that, is what the warning is for.
+const d4Totals = await getUserDailyTotals(alice.id, D4, D4);
+check("a started-but-short suất is flagged", d4Totals[0].incompleteSet, true);
+check("...and is billed nothing", d4Totals[0].setCount, 0);
+
+console.log("\n── two menus on one date (lunch + afternoon party) ──");
+// The rule the slot column exists to protect: the two menus are separate orders
+// to the quán, but a single amount to settle. Splitting the first or merging the
+// second would each be a correctness bug.
+const D5 = "2026-09-18";
+const [lunch] = await db.insert(menuDays).values({
+  serviceDate: D5, slot: "lunch", status: "open",
+  orderCutoff: new Date(Date.now() + 3600_000), shipFeeVnd: 20000,
+}).returning();
+const [party] = await db.insert(menuDays).values({
+  serviceDate: D5, slot: "afternoon", status: "open",
+  orderCutoff: new Date(Date.now() + 3600_000), shipFeeVnd: 30000,
+}).returning();
+
+check("a date holds one menu per sitting", [lunch.slot, party.slot], ["lunch", "afternoon"]);
+check("getMenuDay defaults to lunch", (await getMenuDay(D5))?.id, lunch.id);
+check("...and finds the party when asked", (await getMenuDay(D5, "afternoon"))?.id, party.id);
+check("both sittings listed, lunch first", (await getMenuDaysForDate(D5)).map(d => d.slot), ["lunch", "afternoon"]);
+
+let duplicateRefused = false;
+try {
+  await db.insert(menuDays).values({ serviceDate: D5, slot: "afternoon", status: "draft" });
+} catch {
+  duplicateRefused = true;
+}
+check("a third menu on the date is refused", duplicateRefused, true);
+
+const [lunchDish] = await db.insert(menuItems).values(
+  { menuDayId: lunch.id, name: "Cơm trưa", priceVnd: 60000, sortOrder: 0 },
+).returning();
+const [partyDish] = await db.insert(menuItems).values(
+  { menuDayId: party.id, name: "Bánh kem", priceVnd: 200000, sortOrder: 0 },
+).returning();
+
+await db.insert(bookings).values([
+  { userId: alice.id, menuDayId: lunch.id, menuItemId: lunchDish.id, quantity: 1, unitPriceVnd: 60000 },
+  { userId: alice.id, menuDayId: party.id, menuItemId: partyDish.id, quantity: 1, unitPriceVnd: 200000 },
+]);
+
+check("the lunch kitchen list holds only lunch",
+  (await getKitchenSummary(lunch.id)).map(k => k.itemName), ["Cơm trưa"]);
+check("the party kitchen list holds only the party",
+  (await getKitchenSummary(party.id)).map(k => k.itemName), ["Bánh kem"]);
+check("per-person rows stay with their own sitting",
+  [(await getDayBookingsByPerson(lunch.id)).length, (await getDayBookingsByPerson(party.id)).length], [1, 1]);
+check("a diner's lines are scoped to one menu",
+  (await getUserBookingsForDay(alice.id, lunch.id)).map(l => l.itemName), ["Cơm trưa"]);
+
+// 60k + 200k food, plus both delivery fees — Alice is the only diner on each.
+const d5Totals = await getUserDailyTotals(alice.id, D5, D5);
+check("the date bills as one amount", d5Totals, [
+  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000 },
+]);
+// The bug this guards: à-la-carte dishes are not an unfinished suất. A party
+// menu has no suất at all, so nothing on this date is "chưa đủ món".
+check("per-dish bookings are not a half-finished suất", d5Totals[0].incompleteSet, false);
+check("both delivery fees are counted", d5Totals[0].shipVnd, 50000);
+check("a claim for the date covers both sittings",
+  (await getUserTotalsForDates(alice.id, [D5])).get(D5), 310000);
+check("the ledger shows one row for the date",
+  (await getUserLedger(alice.id, D5, D5)).map(e => [e.serviceDate, e.owedVnd, e.state]),
+  [[D5, 310000, "unpaid"]]);
+
+console.log("\n── locking lunch hands the day to the party ──");
+// Which menu a link with no `buoi` lands on. Lunch owns the day until the admin
+// locks it; only then, and only if the party is already published, does the
+// party take over.
+check("lunch owns the day while it is open",
+  resolveActiveSlot(await getMenuDaysForDate(D5)), "lunch");
+
+await db.update(menuDays).set({ status: "locked" }).where(eq(menuDays.id, lunch.id));
+check("locked lunch + open party hands the day over",
+  resolveActiveSlot(await getMenuDaysForDate(D5)), "afternoon");
+
+await db.update(menuDays).set({ status: "draft" }).where(eq(menuDays.id, party.id));
+check("a party still in draft does not take over",
+  resolveActiveSlot(await getMenuDaysForDate(D5)), "lunch");
+
+await db.update(menuDays).set({ status: "open" }).where(eq(menuDays.id, party.id));
+await db.update(menuDays).set({ status: "open" }).where(eq(menuDays.id, lunch.id));
+check("re-opening lunch takes the day back",
+  resolveActiveSlot(await getMenuDaysForDate(D5)), "lunch");
+
+check("a date with lunch alone is unaffected",
+  resolveActiveSlot(await getMenuDaysForDate(D3)), "lunch");
+
+console.log("\n── the party closes after lunch ──");
+// The party's deadline must come strictly later than lunch's. `upsertMenuDay`
+// applies this to whichever sitting is being saved, so neither can be edited
+// past the other; the ordering itself is the pure rule checked here.
+const at = (hhmm: string) => new Date(`2026-09-18T${hhmm}:00+07:00`);
+const ok = (a: Date | null, b: Date | null) => cutoffOrderError(a, b) === null;
+
+check("a party deadline after lunch is accepted", ok(at("10:00"), at("17:00")), true);
+check("a party deadline before lunch is refused", ok(at("10:00"), at("09:00")), false);
+check("a party deadline equal to lunch is refused", ok(at("10:00"), at("10:00")), false);
+check("one minute later is enough", ok(at("10:00"), at("10:01")), true);
+check("no lunch deadline constrains nothing", ok(null, at("09:00")), true);
+check("no party deadline is not an early one", ok(at("10:00"), null), true);
 
 console.log("\n── settings seed from env ──");
 const settings = await getAppSettings();

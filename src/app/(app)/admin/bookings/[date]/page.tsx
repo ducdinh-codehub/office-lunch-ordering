@@ -20,8 +20,17 @@ import {
   getDayOrdersByPerson,
   getKitchenSummary,
 } from "@/db/queries/bookings";
-import { getMenuDay } from "@/db/queries/menu";
+import { getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
+import { SlotTabs, type SlotTab } from "@/components/menu/slot-tabs";
 import { parseSelectedTier } from "@/lib/set-tiers";
+import {
+  DEFAULT_SLOT,
+  MENU_SLOTS,
+  SLOT_LABEL,
+  SLOT_ORDER_LABEL,
+  parseMenuSlot,
+  withSlot,
+} from "@/lib/menu-slot";
 import { getAllDiners } from "@/db/queries/users";
 import {
   formatServiceDate,
@@ -48,21 +57,37 @@ export default async function AdminDayBookingsPage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ for?: string; suat?: string }>;
+  searchParams: Promise<{ for?: string; suat?: string; buoi?: string }>;
 }) {
   const { date } = await params;
   if (!isServiceDate(date)) notFound();
 
-  const { for: forUserId, suat } = await searchParams;
+  const { for: forUserId, suat, buoi } = await searchParams;
+  const slot = parseMenuSlot(buoi);
   const today = todayServiceDate();
 
-  const [kitchen, people, setOrders, day, diners] = await Promise.all([
-    getKitchenSummary(date),
-    getDayBookingsByPerson(date),
-    getDayOrdersByPerson(date),
-    getMenuDay(date),
+  const [day, existingDays, diners] = await Promise.all([
+    getMenuDay(date, slot),
+    getMenuDaysForDate(date),
     getAllDiners(),
   ]);
+
+  // Every figure below belongs to one sitting. The lunch order and an afternoon
+  // party go to the quán separately, so they are never summed: with no menu for
+  // this sitting there is simply nothing to send.
+  const [kitchen, people, setOrders] = day
+    ? await Promise.all([
+        getKitchenSummary(day.id),
+        getDayBookingsByPerson(day.id),
+        getDayOrdersByPerson(day.id),
+      ])
+    : [[], [], []];
+
+  const tabs: SlotTab[] = MENU_SLOTS.map((candidate) => ({
+    slot: candidate,
+    href: withSlot(`/admin/bookings/${date}`, candidate),
+    exists: existingDays.some((existing) => existing.slot === candidate),
+  }));
 
   const orderingFor = diners.find((diner) => diner.id === forUserId) ?? null;
 
@@ -104,7 +129,7 @@ export default async function AdminDayBookingsPage({
 
   // What gets pasted into the chat with the quán.
   const kitchenText = [
-    `Đơn cơm trưa — ${formatServiceDate(date)}`,
+    `${SLOT_ORDER_LABEL[slot]} — ${formatServiceDate(date)}`,
     ...(setGroups.length > 1
       ? setGroups.map((group) => `${group.count} suất ${formatVnd(group.priceVnd)}`)
       : [`${setOrders.length} suất`]),
@@ -138,10 +163,21 @@ export default async function AdminDayBookingsPage({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Danh sách bếp</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Danh sách bếp
+            {slot !== DEFAULT_SLOT && (
+              <span className="text-muted-foreground ml-2 text-base font-normal">
+                {SLOT_LABEL[slot]}
+              </span>
+            )}
+          </h1>
           <p className="text-muted-foreground text-sm">{formatServiceDate(date)}</p>
         </div>
-        <LinkButton href={`/admin/menu?date=${date}`} variant="outline" size="sm">
+        <LinkButton
+          href={withSlot(`/admin/menu?date=${date}`, slot)}
+          variant="outline"
+          size="sm"
+        >
           <ChevronLeft className="size-4" />
           Sửa thực đơn
         </LinkButton>
@@ -155,7 +191,7 @@ export default async function AdminDayBookingsPage({
           return (
             <LinkButton
               key={target}
-              href={`/admin/bookings/${target}`}
+              href={withSlot(`/admin/bookings/${target}`, slot)}
               size="sm"
               variant={target === date ? "default" : "outline"}
             >
@@ -165,8 +201,11 @@ export default async function AdminDayBookingsPage({
         })}
       </div>
 
+      <SlotTabs tabs={tabs} activeSlot={slot} />
+
       <OrderForUser
         serviceDate={date}
+        slot={slot}
         users={diners}
         selectedUserId={orderingFor?.id ?? null}
       >
@@ -182,6 +221,7 @@ export default async function AdminDayBookingsPage({
             <MenuDayView
               key={orderingFor.id}
               serviceDate={date}
+              slot={slot}
               day={day}
               userId={orderingFor.id}
               onBehalfOf={orderingFor.id}

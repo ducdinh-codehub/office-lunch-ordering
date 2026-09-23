@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { withSlot, type MenuSlot } from "@/lib/menu-slot";
 
 export type DinerOption = { id: string; name: string; email: string };
 
@@ -26,11 +27,13 @@ export type DinerOption = { id: string; name: string; email: string };
  */
 export function OrderForUser({
   serviceDate,
+  slot,
   users,
   selectedUserId,
   children,
 }: {
   serviceDate: string;
+  slot: MenuSlot;
   users: DinerOption[];
   selectedUserId: string | null;
   children?: React.ReactNode;
@@ -41,7 +44,7 @@ export function OrderForUser({
 
   function close() {
     setOpen(false);
-    if (selectedUserId) router.push(`/admin/bookings/${serviceDate}`);
+    if (selectedUserId) router.push(withSlot(`/admin/bookings/${serviceDate}`, slot));
   }
 
   if (!open) {
@@ -62,7 +65,9 @@ export function OrderForUser({
           <Select
             value={selectedUserId ?? ""}
             onValueChange={(value) =>
-              router.push(`/admin/bookings/${serviceDate}?for=${value}`)
+              router.push(
+                withSlot(`/admin/bookings/${serviceDate}?for=${value}`, slot),
+              )
             }
           >
             <SelectTrigger size="sm" className="h-auto w-64">

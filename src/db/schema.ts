@@ -20,6 +20,14 @@ export const menuDayStatus = pgEnum("menu_day_status", [
   "locked", // cutoff passed, order sent to the kitchen
 ]);
 
+/**
+ * Which sitting a menu belongs to. A date sells lunch by default; `afternoon` is
+ * the optional second menu, for the small parties that happen after work. Two
+ * values plus the unique constraint below are what caps a date at two menus —
+ * there is no count to check and no third slot to create.
+ */
+export const menuSlot = pgEnum("menu_slot", ["lunch", "afternoon"]);
+
 export const bookingStatus = pgEnum("booking_status", ["booked", "cancelled"]);
 
 /**
@@ -71,38 +79,50 @@ export const users = pgTable("users", {
 
 /* ──────────────────────────────── menu days ──────────────────────────────── */
 
-export const menuDays = pgTable("menu_days", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // One menu per calendar day, interpreted in Asia/Ho_Chi_Minh.
-  serviceDate: date("service_date").notNull().unique(),
-  status: menuDayStatus("status").notNull().default("draft"),
-  // After this instant no booking or cancellation is accepted. Null = no cutoff.
-  orderCutoff: timestamp("order_cutoff", { withTimezone: true }),
-  // What one suất costs today, quoted by the restaurant (45k–100k in practice).
-  // Snapshotted onto `day_orders` the moment someone completes a set.
-  setPriceVnd: integer("set_price_vnd").notNull().default(0),
-  // How many dishes a complete set takes from each set category. The house
-  // default is 2 mains + 1 side + 1 vegetable, but a day may differ.
-  requiredMain: integer("required_main").notNull().default(2),
-  requiredSide: integer("required_side").notNull().default(1),
-  requiredVeg: integer("required_veg").notNull().default(1),
-  // The optional second suất: its own price and its own required counts, e.g.
-  // 1 món chính at 40k beside the 2 at 50k above. It is on offer only when it
-  // asks for at least one dish — 0/0/0, the default, means one suất only.
-  altSetPriceVnd: integer("alt_set_price_vnd").notNull().default(0),
-  altRequiredMain: integer("alt_required_main").notNull().default(0),
-  altRequiredSide: integer("alt_required_side").notNull().default(0),
-  altRequiredVeg: integer("alt_required_veg").notNull().default(0),
-  // One delivery fee for the whole order, split equally between that day's
-  // diners. 0 means no fee.
-  shipFeeVnd: integer("ship_fee_vnd").notNull().default(0),
-  // Headcount the fee was divided by, written once the day is locked. While a
-  // day is open each share is recomputed live from the current diners; locking
-  // freezes it so a bill someone already has can never move afterwards.
-  shipDinerCount: integer("ship_diner_count"),
-  note: text("note"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const menuDays = pgTable(
+  "menu_days",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // The calendar day, interpreted in Asia/Ho_Chi_Minh. Not unique on its own —
+    // `slot` is the other half of the key.
+    serviceDate: date("service_date").notNull(),
+    // Lunch, or the optional afternoon party menu. A date is resolved by both.
+    slot: menuSlot("slot").notNull().default("lunch"),
+    status: menuDayStatus("status").notNull().default("draft"),
+    // After this instant no booking or cancellation is accepted. Null = no cutoff.
+    orderCutoff: timestamp("order_cutoff", { withTimezone: true }),
+    // What one suất costs today, quoted by the restaurant (45k–100k in practice).
+    // Snapshotted onto `day_orders` the moment someone completes a set.
+    setPriceVnd: integer("set_price_vnd").notNull().default(0),
+    // How many dishes a complete set takes from each set category. The house
+    // default is 2 mains + 1 side + 1 vegetable, but a day may differ.
+    requiredMain: integer("required_main").notNull().default(2),
+    requiredSide: integer("required_side").notNull().default(1),
+    requiredVeg: integer("required_veg").notNull().default(1),
+    // The optional second suất: its own price and its own required counts, e.g.
+    // 1 món chính at 40k beside the 2 at 50k above. It is on offer only when it
+    // asks for at least one dish — 0/0/0, the default, means one suất only.
+    altSetPriceVnd: integer("alt_set_price_vnd").notNull().default(0),
+    altRequiredMain: integer("alt_required_main").notNull().default(0),
+    altRequiredSide: integer("alt_required_side").notNull().default(0),
+    altRequiredVeg: integer("alt_required_veg").notNull().default(0),
+    // One delivery fee for the whole order, split equally between that day's
+    // diners. 0 means no fee.
+    shipFeeVnd: integer("ship_fee_vnd").notNull().default(0),
+    // Headcount the fee was divided by, written once the day is locked. While a
+    // day is open each share is recomputed live from the current diners; locking
+    // freezes it so a bill someone already has can never move afterwards.
+    shipDinerCount: integer("ship_diner_count"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One menu per sitting per day. With only two slots in the enum this is
+    // also the ceiling: a date can hold a lunch and an afternoon menu, no more.
+    unique("menu_days_date_slot_unique").on(t.serviceDate, t.slot),
+    index("menu_days_date_idx").on(t.serviceDate),
+  ],
+);
 
 /* ──────────────────────────────── menu items ─────────────────────────────── */
 
@@ -299,3 +319,4 @@ export type DayOrder = typeof dayOrders.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type SetTierKey = (typeof setTier.enumValues)[number];
+export type MenuSlot = (typeof menuSlot.enumValues)[number];

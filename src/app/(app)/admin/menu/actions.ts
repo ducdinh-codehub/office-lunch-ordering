@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, eq, lt, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
@@ -15,6 +15,12 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { localInputToInstant } from "@/lib/date";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 import { offersSet } from "@/lib/set-tiers";
+import {
+  DEFAULT_SLOT,
+  MENU_SLOTS,
+  cutoffOrderError,
+  type MenuSlot,
+} from "@/lib/menu-slot";
 import { parseMenuText } from "@/lib/menu-import";
 
 async function assertAdmin() {
@@ -32,6 +38,44 @@ function revalidateMenu(serviceDate: string) {
 }
 
 const serviceDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày không hợp lệ.");
+
+/**
+ * Which sitting is being edited. Defaulting to lunch keeps every caller that
+ * predates the afternoon menu — and every form that does not render the tabs —
+ * writing where it always did.
+ */
+const slotSchema = z.enum(MENU_SLOTS).default(DEFAULT_SLOT);
+
+/** The key a menu day is upserted on: a date holds one menu per sitting. */
+const dayConflictTarget = [menuDays.serviceDate, menuDays.slot];
+
+/**
+ * Applies `cutoffOrderError` to the sitting being saved and the other one.
+ *
+ * Checked from whichever side is in hand: editing lunch to close later than the
+ * party is the same mistake as giving the party an earlier deadline, so both
+ * entry points have to refuse it or the rule is trivially breakable.
+ */
+async function assertCutoffOrder(
+  serviceDate: string,
+  slot: MenuSlot,
+  cutoff: Date | null,
+) {
+  if (!cutoff) return; // No deadline is not an early one.
+
+  const sibling = await db.query.menuDays.findFirst({
+    where: and(eq(menuDays.serviceDate, serviceDate), ne(menuDays.slot, slot)),
+    columns: { orderCutoff: true },
+  });
+  if (!sibling?.orderCutoff) return;
+
+  const error =
+    slot === "lunch"
+      ? cutoffOrderError(cutoff, sibling.orderCutoff)
+      : cutoffOrderError(sibling.orderCutoff, cutoff);
+
+  if (error) fail(error);
+}
 
 const categorySchema = z.enum(["main", "side", "veg", "addon", "drink"]);
 
@@ -74,6 +118,7 @@ function assertCategoryFitsMode(
 
 const upsertDaySchema = z.object({
   serviceDate: serviceDateSchema,
+  slot: slotSchema,
   status: z.enum(["draft", "open", "locked"]),
   // `datetime-local` value in Vietnam time, or "" for no cutoff.
   orderCutoff: z.string().max(32).optional(),
@@ -95,6 +140,7 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
     await assertAdmin();
     const {
       serviceDate,
+      slot,
       status,
       orderCutoff,
       note,
@@ -111,6 +157,8 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
 
     const cutoff = orderCutoff ? localInputToInstant(orderCutoff) : null;
     if (cutoff && Number.isNaN(cutoff.getTime())) fail("Thời gian chốt đơn không hợp lệ.");
+
+    await assertCutoffOrder(serviceDate, slot, cutoff);
 
     // Two suất that ask for the same dishes cannot be told apart by what a diner
     // picked, so the cheaper would silently swallow the other.
@@ -141,8 +189,8 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
 
     const [day] = await db
       .insert(menuDays)
-      .values({ serviceDate, ...dayValues })
-      .onConflictDoUpdate({ target: menuDays.serviceDate, set: dayValues })
+      .values({ serviceDate, slot, ...dayValues })
+      .onConflictDoUpdate({ target: dayConflictTarget, set: dayValues })
       .returning({ id: menuDays.id });
 
     // Changing the required counts can complete, un-complete, or move a diner
@@ -166,6 +214,7 @@ export async function upsertMenuDay(input: unknown): Promise<ActionResult<{ id: 
 
 const itemSchema = z.object({
   serviceDate: serviceDateSchema,
+  slot: slotSchema,
   name: z.string().trim().min(1, "Hãy đặt tên cho món ăn.").max(120),
   description: z.string().trim().max(300).optional(),
   priceVnd: z.number().int().min(0).max(100_000_000),
@@ -175,13 +224,14 @@ const itemSchema = z.object({
 export async function addMenuItem(input: unknown): Promise<ActionResult> {
   try {
     await assertAdmin();
-    const { serviceDate, name, description, priceVnd, category } = itemSchema.parse(input);
+    const { serviceDate, slot, name, description, priceVnd, category } =
+      itemSchema.parse(input);
 
     // Create the day on the fly so adding the first dish is a single step.
     const [day] = await db
       .insert(menuDays)
-      .values({ serviceDate, status: "draft" })
-      .onConflictDoUpdate({ target: menuDays.serviceDate, set: { serviceDate } })
+      .values({ serviceDate, slot, status: "draft" })
+      .onConflictDoUpdate({ target: dayConflictTarget, set: { serviceDate } })
       .returning({ id: menuDays.id });
 
     assertCategoryFitsMode(await loadDayMode(day.id), category);
@@ -299,10 +349,15 @@ export async function deleteMenuItem(input: unknown): Promise<ActionResult> {
 export async function copyPreviousMenu(input: unknown): Promise<ActionResult<{ copied: number }>> {
   try {
     await assertAdmin();
-    const { serviceDate } = z.object({ serviceDate: serviceDateSchema }).parse(input);
+    const { serviceDate, slot } = z
+      .object({ serviceDate: serviceDateSchema, slot: slotSchema })
+      .parse(input);
 
+    // Copy from the same sitting: yesterday's lunch is the template for lunch,
+    // and the last party is the template for a party. Crossing them would pull
+    // a party menu into a working day.
     const source = await db.query.menuDays.findFirst({
-      where: lt(menuDays.serviceDate, serviceDate),
+      where: and(lt(menuDays.serviceDate, serviceDate), eq(menuDays.slot, slot)),
       orderBy: (days, { desc }) => [desc(days.serviceDate)],
       with: { items: { orderBy: [asc(menuItems.sortOrder)] } },
     });
@@ -327,8 +382,8 @@ export async function copyPreviousMenu(input: unknown): Promise<ActionResult<{ c
 
     const [target] = await db
       .insert(menuDays)
-      .values({ serviceDate, status: "draft", ...setConfig })
-      .onConflictDoUpdate({ target: menuDays.serviceDate, set: setConfig })
+      .values({ serviceDate, slot, status: "draft", ...setConfig })
+      .onConflictDoUpdate({ target: dayConflictTarget, set: setConfig })
       .returning({ id: menuDays.id });
 
     const existing = await db
@@ -362,6 +417,7 @@ export async function copyPreviousMenu(input: unknown): Promise<ActionResult<{ c
 
 const importSchema = z.object({
   serviceDate: serviceDateSchema,
+  slot: slotSchema,
   text: z.string().trim().min(1, "Hãy dán thực đơn vào ô bên trên.").max(20_000),
 });
 
@@ -377,7 +433,7 @@ export async function importMenuText(
 ): Promise<ActionResult<{ imported: number; missingPrice: number }>> {
   try {
     await assertAdmin();
-    const { serviceDate, text } = importSchema.parse(input);
+    const { serviceDate, slot, text } = importSchema.parse(input);
 
     const parsed = parseMenuText(text);
     if (parsed.items.length === 0) {
@@ -386,8 +442,8 @@ export async function importMenuText(
 
     const [day] = await db
       .insert(menuDays)
-      .values({ serviceDate, status: "draft" })
-      .onConflictDoUpdate({ target: menuDays.serviceDate, set: { serviceDate } })
+      .values({ serviceDate, slot, status: "draft" })
+      .onConflictDoUpdate({ target: dayConflictTarget, set: { serviceDate } })
       .returning({ id: menuDays.id });
 
     const booked = await db
@@ -420,5 +476,50 @@ export async function importMenuText(
       return { ok: false, error: cause.issues[0]?.message ?? "Không đọc được thực đơn." };
     }
     return toActionError(cause, "Không nhập được thực đơn.");
+  }
+}
+
+/* ─────────────────────────────── removing a menu ─────────────────────────── */
+
+/**
+ * Removes a whole menu from a date — the way an afternoon party added by
+ * mistake goes away again.
+ *
+ * Only the afternoon slot can be removed. Lunch is the date's primary menu and
+ * the editor already knows how to empty it; deleting it would take the date's
+ * identity with it. Anything anyone has booked blocks the delete rather than
+ * cascading their picks away underneath them.
+ */
+export async function deleteMenuDay(input: unknown): Promise<ActionResult> {
+  try {
+    await assertAdmin();
+    const { serviceDate, slot } = z
+      .object({ serviceDate: serviceDateSchema, slot: slotSchema })
+      .parse(input);
+
+    if (slot === DEFAULT_SLOT) fail("Không thể xoá thực đơn bữa trưa của ngày.");
+
+    const day = await db.query.menuDays.findFirst({
+      where: and(eq(menuDays.serviceDate, serviceDate), eq(menuDays.slot, slot)),
+      columns: { id: true },
+    });
+    if (!day) fail("Thực đơn này không còn tồn tại.");
+
+    const booked = await db
+      .select({ id: bookings.id })
+      .from(bookings)
+      .where(and(eq(bookings.menuDayId, day.id), eq(bookings.status, "booked")))
+      .limit(1);
+
+    if (booked.length > 0) {
+      fail("Đã có người đặt món cho buổi này — không thể xoá.");
+    }
+
+    await db.delete(menuDays).where(eq(menuDays.id, day.id));
+
+    revalidateMenu(serviceDate);
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không xoá được thực đơn này.");
   }
 }

@@ -17,6 +17,7 @@ import {
   type SetTier,
 } from "@/lib/set-tiers";
 import { getShipShares, getUserBookingsForDay, getUserSetPriceForDay } from "@/db/queries/bookings";
+import { DEFAULT_SLOT, SLOT_LABEL, type MenuSlot } from "@/lib/menu-slot";
 import { formatInstant, formatServiceDate, type ServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import type { MenuItemCategory, SetTierKey } from "@/db/schema";
@@ -34,12 +35,18 @@ const PAID_SECTIONS = [
 
 export async function MenuDayView({
   serviceDate,
+  slot = DEFAULT_SLOT,
   day,
   userId,
   onBehalfOf,
   selectedTier = null,
 }: {
   serviceDate: ServiceDate;
+  /**
+   * Which sitting this card is showing. Only used to name the one that has no
+   * menu yet — when `day` exists it carries its own slot.
+   */
+  slot?: MenuSlot;
   day: MenuDayWithItems | null;
   userId: string;
   /**
@@ -55,12 +62,15 @@ export async function MenuDayView({
    */
   selectedTier?: SetTierKey | null;
 }) {
-  const [myBookings, lockedSetPrice, shipShares] = await Promise.all([
-    getUserBookingsForDay(userId, serviceDate),
-    getUserSetPriceForDay(userId, serviceDate),
-    getShipShares({ dates: [serviceDate] }),
+  // Everything below is scoped to this one menu. A date can hold a lunch and an
+  // afternoon party, and each card shows only its own dishes, suất and ship fee.
+  const [myBookings, lockedSetPrice, allShipShares] = await Promise.all([
+    day ? getUserBookingsForDay(userId, day.id) : [],
+    day ? getUserSetPriceForDay(userId, day.id) : null,
+    day ? getShipShares({ dates: [serviceDate] }) : [],
   ]);
 
+  const shipShares = allShipShares.filter((share) => share.menuDayId === day?.id);
   const myShipVnd = shipShares.find((share) => share.userId === userId)?.shareVnd ?? 0;
   const shipDinerCount = shipShares.length;
 
@@ -77,7 +87,10 @@ export async function MenuDayView({
           <p className="text-3xl" aria-hidden>
             🍜
           </p>
-          <p className="mt-3 font-medium">Chưa có thực đơn cho {formatServiceDate(serviceDate)}.</p>
+          <p className="mt-3 font-medium">
+            Chưa có {slot === DEFAULT_SLOT ? "thực đơn" : SLOT_LABEL[slot].toLowerCase()} cho{" "}
+            {formatServiceDate(serviceDate)}.
+          </p>
           <p className="mt-1 text-sm">Bạn quay lại sau một chút nhé.</p>
         </CardContent>
       </Card>
@@ -125,7 +138,14 @@ export async function MenuDayView({
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-lg">{formatServiceDate(serviceDate)}</CardTitle>
+          <CardTitle className="text-lg">
+            {formatServiceDate(serviceDate)}
+            {day.slot !== "lunch" && (
+              <span className="text-muted-foreground ml-2 text-sm font-normal">
+                {SLOT_LABEL[day.slot]}
+              </span>
+            )}
+          </CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             {offersSet && (
               <SetTierBadges
@@ -137,7 +157,7 @@ export async function MenuDayView({
                     composition: tierComposition(tier),
                   }))}
                 activeKey={activeTier?.key ?? null}
-                serviceDate={serviceDate}
+                menuDayId={day.id}
                 canBook={canBook}
                 onBehalfOf={onBehalfOf}
               />

@@ -87,6 +87,42 @@ bug, not a style issue.
 - **Prices are snapshotted.** `bookings.unit_price_vnd` is copied from the menu item
   at booking time. Editing a menu price must never change a bill someone already
   has. `menu_items.price_vnd` is only ever the *current* advertised price.
+- **A date may hold two menus, and exactly two.** `menu_days` is keyed on
+  `(service_date, slot)`, where `slot` is `lunch` or `afternoon` — the second
+  sitting exists for the small parties that happen after work. The enum plus the
+  unique constraint *is* the "max 2" rule; there is no count to check. Every
+  per-menu read takes a `menu_day_id`, never a date: `getKitchenSummary`,
+  `getDayBookingsByPerson`, `getDayOrdersByPerson`, `getUserBookingsForDay`,
+  `getUserSetPriceForDay`. Merging the two would send the party to the quán
+  inside the lunch order and count its dishes towards the lunch suất. **Money is
+  the deliberate exception**: `getUserDailyTotals`, `getUserTotalsForDates`,
+  `getShipShares` and the roster all aggregate *per date*, so lunch and the
+  party are one amount, one QR and one bank transfer — which is why `payments`
+  can stay keyed on `(user_id, service_date)`. The sitting travels in the `buoi`
+  query parameter, and its absence means lunch, so every link written before the
+  second menu existed still resolves the way it always did. `ServiceDate` is a
+  bare `string`, so the compiler will *not* catch a date passed where a
+  `menu_day_id` belongs — `pnpm db:verify` is what catches it.
+- **Locking lunch hands the day to the party.** `resolveActiveSlot()`
+  (`src/lib/menu-slot.ts`) decides which sitting a link *without* `buoi` lands
+  on: lunch, until its status is `locked` **and** an afternoon menu is already
+  `open` — then the party. A party still in `draft` never takes over, and
+  locking lunch never publishes one; the status is a precondition, not an
+  effect. An explicit `?buoi=lunch` still reaches the locked lunch menu, which
+  is how a diner sees what they ordered and still owe.
+- **The party closes after lunch, never with it or before.**
+  `cutoffOrderError()` is the rule; `upsertMenuDay` applies it to whichever
+  sitting is being saved, so editing lunch to close *later* than the party is
+  refused just as an early party deadline is. Equal instants are refused too —
+  with both on the same moment there is no telling which order is still open. A
+  missing cutoff is not an early one: it means that sitting has no deadline.
+- **"Suất chưa đủ món" means a suất was started and left short.** Not "no suất":
+  a per-dish menu — an afternoon party included — has none to be incomplete, and
+  neither does a date where the only bookings are drinks and gọi thêm.
+  `DailyTotal.incompleteSet` is the signal, true only where the diner took a
+  món chính / phụ / rau on a menu with no completed `day_orders` row. Deriving
+  it from "no set + some items", as the bookings page once did, labels every
+  à-la-carte day as a broken order.
 - **A day is priced one way or the other, never both.** *Combo mode* sells a suất:
   a fixed price for a required number of món chính / phụ / rau, with "gọi thêm"
   and drinks charged on top. *Per-dish mode* has no suất and no groups — every
@@ -145,6 +181,13 @@ everything in `AppShell`. `admin/layout.tsx` nests inside it and adds
 `src/components/ui/link-button.tsx` for button-styled links rather than
 re-deriving that.
 
+`SlotTabs` switches between a date's two sittings. Diners only see it once an
+afternoon menu is published; the admin always sees both, because tapping the
+absent one is how a party menu gets created. `MenuDayView` renders one sitting
+at a time — two on a page would share the single `suat` parameter, so choosing
+a suất on one would move the other, which is why the home page links to the
+afternoon menu rather than stacking a second card.
+
 `MenuEditor` carries the combo / per-dish tabs. Per-dish mode hides every suất
 field, drops the category picker entirely (one bucket, `addon`, relabelled "Món
 ăn"), and warns about dishes stranded in a combo category — those would be free
@@ -156,9 +199,10 @@ Three boundary gotchas that have already caused bugs:
 - `Map` does not survive the server → client boundary. `admin/payments/page.tsx`
   flattens roster cells to a plain `Record` before passing them down.
 - A client component holding form state in `useState` will keep it across a
-  client-side navigation. `MenuEditor` is given `key={serviceDate}` to force a
-  remount; without it, switching days carries the previous day's cutoff into the
-  form and saving writes the wrong value.
+  client-side navigation. `MenuEditor` is given ``key={`${serviceDate}:${slot}`}``
+  to force a remount; without it, switching days — or switching between the
+  lunch and afternoon tabs of one day — carries the previous menu's cutoff into
+  the form and saving writes the wrong value.
 - **`useState(prop)` seeds, it does not sync.** `SetDishRow` and `MenuItemRow` hold
   an optimistic tick/count for instant feedback, and both re-seed from the server
   value whenever it moves (the render-phase adjust pattern, not an effect).

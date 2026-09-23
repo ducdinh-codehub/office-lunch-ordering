@@ -128,9 +128,10 @@ for (const [dayIndex, serviceDate] of serviceDates.entries()) {
       status: isToday ? "open" : "locked",
       setPriceVnd: SET_PRICE,
       shipFeeVnd: SHIP_FEE,
-      // End of the day in Vietnam, so the seeded menu stays bookable however
-      // late you run this — a cutoff a few hours out expires mid-test.
-      orderCutoff: isToday ? localInputToInstant(`${serviceDate}T23:59`) : null,
+      // Late in the Vietnam evening, so the seeded menu stays bookable however
+      // late you run this — a cutoff a few hours out expires mid-test. The
+      // party below closes at 23:59, after this, as the rule requires.
+      orderCutoff: isToday ? localInputToInstant(`${serviceDate}T23:00`) : null,
       note: "Thực đơn tự chọn CƠM THANH · ĐT đặt món: 097 344 9981",
     })
     .returning();
@@ -204,6 +205,69 @@ for (const [dayIndex, serviceDate] of serviceDates.entries()) {
 }
 
 console.log(`   ${bookingCount} bookings across ${serviceDates.length} days`);
+
+/* ── 3b. an afternoon party on today, beside the lunch menu ─────────────── */
+
+// The second sitting a date can hold. Priced per dish rather than by suất —
+// nobody buys a party in suất — so every item carries its own price and the
+// menu has no món chính / phụ / rau at all.
+const PARTY_DISHES: Array<[string, number]> = [
+  ["Bánh kem", 250_000],
+  ["Trà sữa", 35_000],
+  ["Hoa quả dĩa", 80_000],
+  ["Khô gà lá chanh", 60_000],
+];
+
+const [party] = await db
+  .insert(menuDays)
+  .values({
+    serviceDate: today,
+    slot: "afternoon",
+    status: "open",
+    setPriceVnd: 0,
+    requiredMain: 0,
+    requiredSide: 0,
+    requiredVeg: 0,
+    shipFeeVnd: 0,
+    // Strictly after lunch's 23:00 — the party always closes last.
+    orderCutoff: localInputToInstant(`${today}T23:59`),
+    note: "Sinh nhật phòng — chiều nay 16h30",
+  })
+  .returning();
+
+const partyItems = await db
+  .insert(menuItems)
+  .values(
+    PARTY_DISHES.map(([name, priceVnd], index) => ({
+      menuDayId: party.id,
+      name,
+      category: "addon" as const,
+      priceVnd,
+      sortOrder: index,
+    })),
+  )
+  .returning();
+
+let partyBookings = 0;
+for (const [personIndex, person] of everyone.entries()) {
+  // Roughly half the office joins the party.
+  if (Math.abs(seeded(personIndex * 17 + 3)) < 0.5) continue;
+  const dish = pick(partyItems, personIndex * 5);
+  await db
+    .insert(bookings)
+    .values({
+      userId: person.id,
+      menuDayId: party.id,
+      menuItemId: dish.id,
+      quantity: 1,
+      unitPriceVnd: dish.priceVnd,
+      status: "booked",
+    })
+    .onConflictDoNothing();
+  partyBookings++;
+}
+
+console.log(`   + tiệc chiều nay: ${PARTY_DISHES.length} món, ${partyBookings} người đặt`);
 
 /* ── 4. payment states: a deliberate mix ────────────────────────────────── */
 

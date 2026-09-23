@@ -28,6 +28,7 @@ import {
 } from "@/app/(app)/admin/menu/actions";
 import type { ActionResult } from "@/lib/action-result";
 import { ImportMenu } from "@/components/admin/import-menu";
+import type { MenuSlot } from "@/lib/menu-slot";
 import { MenuSection } from "@/components/menu/menu-section";
 import { formatVnd } from "@/lib/money";
 
@@ -44,6 +45,14 @@ type EditorItem = {
 
 export type MenuEditorProps = {
   serviceDate: string;
+  /** Which sitting of that date this form writes to. */
+  slot: MenuSlot;
+  /**
+   * The other sitting's deadline, already formatted, or null when that sitting
+   * has none. Shown beside the field because the rule — the party closes after
+   * lunch — is otherwise only discoverable by having the save refused.
+   */
+  siblingCutoffLabel: string | null;
   status: "draft" | "open" | "locked";
   orderCutoffLocal: string;
   note: string;
@@ -190,6 +199,7 @@ export function MenuEditor(props: MenuEditorProps) {
       () =>
         upsertMenuDay({
           serviceDate: props.serviceDate,
+          slot: props.slot,
           status,
           orderCutoff: cutoff,
           note,
@@ -220,6 +230,7 @@ export function MenuEditor(props: MenuEditorProps) {
     run(async () => {
       const result = await addMenuItem({
         serviceDate: props.serviceDate,
+        slot: props.slot,
         name: newName,
         description: newDescription,
         category: newCategory,
@@ -239,7 +250,7 @@ export function MenuEditor(props: MenuEditorProps) {
       {/* The importer reads the quán's Zalo message, which is written as a suất:
           sections for món chính / phụ / rau, and a price only on "gọi thêm" and
           drinks. It cannot express a per-dish day, so it is not offered on one. */}
-      {isComboMode && <ImportMenu serviceDate={props.serviceDate} />}
+      {isComboMode && <ImportMenu serviceDate={props.serviceDate} slot={props.slot} />}
 
       <Card>
         <CardHeader>
@@ -290,6 +301,13 @@ export function MenuEditor(props: MenuEditorProps) {
                 value={cutoff}
                 onChange={(event) => setCutoff(event.target.value)}
               />
+              {props.siblingCutoffLabel && (
+                <p className="text-muted-foreground text-xs">
+                  {props.slot === "afternoon"
+                    ? `Phải muộn hơn hạn bữa trưa: ${props.siblingCutoffLabel}`
+                    : `Phải sớm hơn hạn tiệc chiều: ${props.siblingCutoffLabel}`}
+                </p>
+              )}
             </div>
           </div>
 
@@ -405,7 +423,11 @@ export function MenuEditor(props: MenuEditorProps) {
                 disabled={isPending}
                 onClick={() =>
                   run(
-                    () => copyPreviousMenu({ serviceDate: props.serviceDate }),
+                    () =>
+                      copyPreviousMenu({
+                        serviceDate: props.serviceDate,
+                        slot: props.slot,
+                      }),
                     "Đã sao chép thực đơn trước đó.",
                   )
                 }

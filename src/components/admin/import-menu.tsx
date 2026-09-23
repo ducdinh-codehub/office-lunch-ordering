@@ -12,6 +12,7 @@ import { importMenuText } from "@/app/(app)/admin/menu/actions";
 import { parseMenuText } from "@/lib/menu-import";
 import { formatVnd } from "@/lib/money";
 import type { ServiceDate } from "@/lib/date";
+import type { MenuSlot } from "@/lib/menu-slot";
 
 const CATEGORY_LABEL = {
   main: "Món chính",
@@ -27,7 +28,13 @@ const CATEGORY_LABEL = {
  * The preview runs the same parser the action does, so what the admin checks is
  * exactly what gets written.
  */
-export function ImportMenu({ serviceDate }: { serviceDate: ServiceDate }) {
+export function ImportMenu({
+  serviceDate,
+  slot,
+}: {
+  serviceDate: ServiceDate;
+  slot: MenuSlot;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -37,7 +44,7 @@ export function ImportMenu({ serviceDate }: { serviceDate: ServiceDate }) {
 
   function handleImport() {
     startTransition(async () => {
-      const result = await importMenuText({ serviceDate, text });
+      const result = await importMenuText({ serviceDate, slot, text });
       if (result.ok) {
         const { imported = 0, missingPrice = 0 } = result.data ?? {};
         toast.success(

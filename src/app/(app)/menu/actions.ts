@@ -169,7 +169,9 @@ export async function toggleSetDish(input: unknown): Promise<ActionResult> {
 }
 
 const switchTierSchema = z.object({
-  serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày không hợp lệ."),
+  // The menu, not the date: a date can hold a lunch and an afternoon party, and
+  // each sells its own suất.
+  menuDayId: z.string().uuid(),
   tier: z.enum(["full", "alt"]),
   onBehalfOf: z.string().uuid().optional(),
 });
@@ -191,12 +193,10 @@ export async function switchSetTier(
     const user = await getCurrentUser();
     if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
 
-    const { serviceDate, tier, onBehalfOf } = switchTierSchema.parse(input);
+    const { menuDayId, tier, onBehalfOf } = switchTierSchema.parse(input);
     const diner = await resolveDiner(user, onBehalfOf);
 
-    const day = await db.query.menuDays.findFirst({
-      where: eq(menuDays.serviceDate, serviceDate),
-    });
+    const day = await db.query.menuDays.findFirst({ where: eq(menuDays.id, menuDayId) });
     if (!day) fail("Chưa có thực đơn cho ngày này.");
     if (!diner.overrideCutoff && !isBookingOpen(day)) {
       fail(bookingClosedReason(day) ?? "Ngày này đã đóng đặt món.");
@@ -236,7 +236,7 @@ export async function switchSetTier(
     // Nothing is left of the old suất, so the day_orders row goes with it.
     await syncDayOrder(diner.userId, day.id);
 
-    revalidateFor(serviceDate);
+    revalidateFor(day.serviceDate);
     return actionOk({ cleared });
   } catch (cause) {
     return toActionError(cause, "Không đổi được suất.");

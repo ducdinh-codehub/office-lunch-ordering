@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { MenuDayView } from "@/components/menu/menu-day-view";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
+import { resolveActiveSlot, withSlot } from "@/lib/menu-slot";
 import { getUserLedger, settleableEntries } from "@/db/queries/payments";
 import { requireUser } from "@/lib/auth/session";
 import { parseSelectedTier } from "@/lib/set-tiers";
@@ -21,8 +22,9 @@ export default async function TodayPage({
   const today = todayServiceDate();
   const tomorrow = shiftServiceDate(today, 1);
 
-  const [day, tomorrowDay, ledger] = await Promise.all([
+  const [lunchDay, afternoonDay, tomorrowDay, ledger] = await Promise.all([
     getMenuDay(today),
+    getMenuDay(today, "afternoon"),
     getMenuDay(tomorrow),
     // 90 days back is plenty to surface anything still owed.
     getUserLedger(user.id, shiftServiceDate(today, -90), today),
@@ -33,6 +35,19 @@ export default async function TodayPage({
 
   const firstName = (user.displayName ?? user.email.split("@")[0]).split(" ")[0];
   const tomorrowIsBookable = tomorrowDay && tomorrowDay.status !== "draft";
+
+  // Which menu today's tab is actually about. Lunch, until the admin locks it —
+  // from then on a published party takes the day over, and the finished lunch
+  // menu drops off this page rather than sitting above it with nothing to do.
+  const activeSlot = resolveActiveSlot(
+    [lunchDay, afternoonDay].filter((menu) => menu !== null),
+  );
+  const day = activeSlot === "afternoon" ? afternoonDay : lunchDay;
+
+  // While lunch is still the day, a published party is one tap away. Once the
+  // party *is* the day there is nothing to link to — it is already on screen.
+  const showPartyLink =
+    activeSlot === "lunch" && afternoonDay !== null && afternoonDay.status !== "draft";
 
   return (
     <div className="space-y-5">
@@ -61,10 +76,21 @@ export default async function TodayPage({
 
       <MenuDayView
         serviceDate={today}
+        slot={activeSlot}
         day={day}
         userId={user.id}
         selectedTier={parseSelectedTier(suat)}
       />
+
+      {showPartyLink && (
+        <Link
+          href={withSlot(`/menu/${today}`, "afternoon")}
+          className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition-colors hover:bg-amber-100/70 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <span>Chiều nay có tiệc — xem thực đơn</span>
+          <ArrowRight className="size-4" />
+        </Link>
+      )}
 
       {tomorrowIsBookable && (
         <Link

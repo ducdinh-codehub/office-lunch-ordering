@@ -61,8 +61,13 @@ export default async function MyBookingsPage() {
                   )}
                 </p>
                 <p className="text-muted-foreground text-sm">
-                  {day.hasSet ? `1 suất · ${day.itemCount} món` : `${day.itemCount} món`}
-                  {!day.hasSet && day.itemCount > 0 && (
+                  {/* A date can bill two suất — lunch plus an afternoon party. */}
+                  {day.setCount > 0
+                    ? `${day.setCount} suất · ${day.itemCount} món`
+                    : `${day.itemCount} món`}
+                  {/* Only when a suất was actually started and left short. A
+                      per-dish menu has none to be incomplete. */}
+                  {day.incompleteSet && (
                     <span className="text-amber-700 dark:text-amber-500"> · suất chưa đủ món</span>
                   )}
                 </p>

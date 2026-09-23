@@ -33,13 +33,13 @@ export type TierChoice = {
 export function SetTierBadges({
   tiers,
   activeKey,
-  serviceDate,
+  menuDayId,
   canBook,
   onBehalfOf,
 }: {
   tiers: TierChoice[];
   activeKey: SetTierKey | null;
-  serviceDate: string;
+  menuDayId: string;
   canBook: boolean;
   onBehalfOf?: string;
 }) {
@@ -61,7 +61,7 @@ export function SetTierBadges({
   function choose(key: SetTierKey) {
     if (key === activeKey || isPending) return;
     startTransition(async () => {
-      const result = await switchSetTier({ serviceDate, tier: key, onBehalfOf });
+      const result = await switchSetTier({ menuDayId, tier: key, onBehalfOf });
       if (!result.ok) {
         toast.error(result.error);
         return;
