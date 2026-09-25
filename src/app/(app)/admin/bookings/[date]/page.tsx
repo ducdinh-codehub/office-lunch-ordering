@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ImageDown } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { LinkButton } from "@/components/ui/link-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -31,17 +32,10 @@ import {
   todayServiceDate,
 } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
+import { KITCHEN_SECTIONS as SECTIONS, summarizeKitchenBill } from "@/lib/kitchen-bill";
 import type { MenuItemCategory } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
-
-const SECTIONS = [
-  { category: "main", label: "Món chính" },
-  { category: "side", label: "Món phụ" },
-  { category: "veg", label: "Món rau" },
-  { category: "addon", label: "Gọi thêm" },
-  { category: "drink", label: "Đồ uống" },
-] as const satisfies ReadonlyArray<{ category: MenuItemCategory; label: string }>;
 
 export default async function AdminDayBookingsPage({
   params,
@@ -66,33 +60,12 @@ export default async function AdminDayBookingsPage({
 
   const orderingFor = diners.find((diner) => diner.id === forUserId) ?? null;
 
-  const shipFeeVnd = day?.shipFeeVnd ?? 0;
+  const { ordered, setGroups, shipFeeVnd, totalVnd, totalDishes } = summarizeKitchenBill(
+    kitchen,
+    setOrders,
+    day?.shipFeeVnd ?? 0,
+  );
 
-  const ordered = kitchen.filter((line) => line.totalQuantity > 0);
-
-  // Set dishes are covered by the suất price; only add-ons and drinks are billed
-  // per portion, so the day's money is sets + paid lines.
-  const setTotalVnd = setOrders.reduce((total, order) => total + order.setPriceVnd, 0);
-  // A day can sell two suất, and a price edit can leave older snapshots behind,
-  // so the quán is told how many of each price rather than one bare headcount.
-  const setGroups = [
-    ...setOrders
-      .reduce(
-        (groups, order) =>
-          groups.set(order.setPriceVnd, (groups.get(order.setPriceVnd) ?? 0) + 1),
-        new Map<number, number>(),
-      )
-      .entries(),
-  ]
-    .map(([priceVnd, count]) => ({ priceVnd, count }))
-    .sort((a, b) => b.priceVnd - a.priceVnd);
-  const paidTotalVnd = ordered
-    .filter((line) => line.category === "addon" || line.category === "drink")
-    .reduce((total, line) => total + line.totalQuantity * line.priceVnd, 0);
-  // The quán charges the delivery once for the whole order, not per person.
-  const totalVnd = setTotalVnd + paidTotalVnd + shipFeeVnd;
-
-  const totalDishes = ordered.reduce((total, line) => total + line.totalQuantity, 0);
   // Everyone with a complete set, plus anyone who only ordered à-la-carte.
   const headcount = new Set([
     ...setOrders.map((order) => order.userId),
@@ -141,10 +114,23 @@ export default async function AdminDayBookingsPage({
           <h1 className="text-2xl font-semibold tracking-tight">Danh sách bếp</h1>
           <p className="text-muted-foreground text-sm">{formatServiceDate(date)}</p>
         </div>
-        <LinkButton href={`/admin/menu?date=${date}`} variant="outline" size="sm">
-          <ChevronLeft className="size-4" />
-          Sửa thực đơn
-        </LinkButton>
+        <div className="flex flex-wrap gap-2">
+          {/* A plain <a>, not LinkButton: the route answers with a file, so the
+              client router must not try to navigate to it. */}
+          <Button
+            nativeButton={false}
+            variant="outline"
+            size="sm"
+            render={<a href={`/admin/bookings/${date}/export`} download />}
+          >
+            <ImageDown className="size-4" />
+            Tải ảnh hóa đơn
+          </Button>
+          <LinkButton href={`/admin/menu?date=${date}`} variant="outline" size="sm">
+            <ChevronLeft className="size-4" />
+            Sửa thực đơn
+          </LinkButton>
+        </div>
       </div>
 
       {/* The nav tab lands on today, so days are switched from here. */}
