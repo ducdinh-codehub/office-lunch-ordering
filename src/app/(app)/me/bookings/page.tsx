@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
+import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
 import { Card, CardContent } from "@/components/ui/card";
 import { getUserDailyTotals } from "@/db/queries/bookings";
 import { requireUser } from "@/lib/auth/session";
@@ -25,7 +26,8 @@ export default async function MyBookingsPage() {
   const grandTotal = days.reduce((total, day) => total + day.totalVnd, 0);
 
   return (
-    <div className="space-y-5">
+    <div className="relative isolate space-y-5">
+      <SeasonalBackdrop />
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Đơn của tôi</h1>
         <p className="text-muted-foreground text-sm">

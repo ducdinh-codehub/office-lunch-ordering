@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
 
 import { SettingsForm } from "@/components/admin/settings-form";
+import { HomeThemePicker } from "@/components/admin/home-theme-picker";
 import { MemberList } from "@/components/admin/member-list";
 import { ResetOrders } from "@/components/admin/reset-orders";
 import { db } from "@/db";
 import { bookings } from "@/db/schema";
 import { getAppSettings } from "@/db/queries/settings";
 import { getAllMembers } from "@/db/queries/users";
+import { parseHomeTheme } from "@/lib/home-themes";
 import { fallbackDisplayName } from "@/lib/display-name";
 import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
 import { pageTitle } from "@/lib/app-name";
@@ -39,6 +41,8 @@ export default async function AdminSettingsPage() {
         defaultShipFeeVnd={settings.defaultShipFeeVnd}
         qrImageStamp={settings.qrImageData ? String(settings.updatedAt.getTime()) : null}
       />
+
+      <HomeThemePicker homeTheme={parseHomeTheme(settings.homeTheme)} />
 
       <MemberList
         members={members.map((member) => ({

@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 
 import { GymTimePromo } from "@/components/gym-time-promo";
 import { MenuDayView } from "@/components/menu/menu-day-view";
+import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
 import { getUserLedger, settleableEntries } from "@/db/queries/payments";
@@ -36,7 +37,8 @@ export default async function TodayPage({
   const tomorrowIsBookable = tomorrowDay && tomorrowDay.status !== "draft";
 
   return (
-    <div className="space-y-5">
+    <div className="relative isolate space-y-5">
+      <SeasonalBackdrop />
       <GymTimePromo />
 
       <div>

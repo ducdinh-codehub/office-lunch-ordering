@@ -244,3 +244,131 @@
     animation: none !important;
   }
 }
+
+/* ── Tết Trung Thu backdrop (home page) ────────────────────────────────────
+   Lanterns rise the full height of the screen while swaying from their string,
+   đèn ông sao turn, the moon breathes, clouds cross it. Everything is slow and
+   partly transparent: it sits behind the menu, which is what people came for. */
+.mooncake-moon {
+  background: radial-gradient(circle at 38% 36%, #fff8dc 0%, #ffe89a 45%, #f9c74f 100%);
+  box-shadow:
+    0 0 60px 20px rgb(255 214 102 / 0.45),
+    0 0 140px 60px rgb(255 190 80 / 0.25);
+  opacity: 0.85;
+  animation: mooncake-moon-glow 7s ease-in-out infinite;
+}
+
+.mooncake-cloud {
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.7);
+  filter: blur(6px);
+  animation: mooncake-cloud var(--cloud-duration) linear infinite;
+  animation-delay: var(--cloud-delay);
+}
+.dark .mooncake-cloud {
+  background: rgb(148 163 184 / 0.35);
+}
+
+.mooncake-star {
+  box-shadow: 0 0 6px 1px rgb(251 191 36 / 0.7);
+  animation: mooncake-twinkle 3.6s ease-in-out infinite;
+}
+
+.mooncake-rise {
+  opacity: 0.75;
+  filter: drop-shadow(0 0 10px rgb(255 140 60 / 0.55));
+  animation: mooncake-rise var(--rise-duration) linear infinite;
+  animation-delay: var(--rise-delay);
+}
+
+.mooncake-sway {
+  transform-origin: 50% 0;
+  animation: mooncake-sway 4s ease-in-out infinite;
+}
+
+.mooncake-ong-sao {
+  opacity: 0.7;
+  filter: drop-shadow(0 0 8px rgb(255 190 60 / 0.6));
+  animation-name: mooncake-spin;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes mooncake-moon-glow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.95;
+  }
+}
+
+@keyframes mooncake-cloud {
+  from {
+    transform: translateX(20vw);
+  }
+  to {
+    transform: translateX(-120vw);
+  }
+}
+
+@keyframes mooncake-twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes mooncake-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8%,
+  85% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(-120vh);
+    opacity: 0;
+  }
+}
+
+@keyframes mooncake-sway {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes mooncake-spin {
+  0%,
+  100% {
+    transform: rotate(-12deg) translateY(0);
+  }
+  50% {
+    transform: rotate(12deg) translateY(-10px);
+  }
+}
+
+/* Still, not gone: lanterns park part-way up rather than below the fold. */
+@media (prefers-reduced-motion: reduce) {
+  .mooncake-backdrop,
+  .mooncake-backdrop * {
+    animation: none !important;
+  }
+  .mooncake-rise {
+    transform: translateY(var(--rest-y));
+  }
+}

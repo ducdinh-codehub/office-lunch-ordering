@@ -249,6 +249,13 @@ export const appSettings = pgTable("app_settings", {
    */
   qrImageData: text("qr_image_data"),
   qrImageType: text("qr_image_type"),
+  /**
+   * The seasonal backdrop behind the diner pages — an id from `HOME_THEMES`
+   * (`src/lib/home-themes.ts`), or "none". Text rather than a pg enum so a new
+   * theme is a code change, not a migration; an id the code no longer knows
+   * renders as "none".
+   */
+  homeTheme: text("home_theme").notNull().default("none"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
