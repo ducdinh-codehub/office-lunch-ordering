@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
+import { GymTimePromo } from "@/components/gym-time-promo";
 import { MenuDayView } from "@/components/menu/menu-day-view";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
@@ -36,6 +37,8 @@ export default async function TodayPage({
 
   return (
     <div className="space-y-5">
+      <GymTimePromo />
+
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Chào {firstName} 👋</h1>
         <p className="text-muted-foreground text-sm">Hôm nay có món gì nào.</p>
