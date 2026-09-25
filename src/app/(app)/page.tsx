@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
+import { GreetingBanner } from "@/components/greeting-banner";
 import { GymTimePromo } from "@/components/gym-time-promo";
 import { MenuDayView } from "@/components/menu/menu-day-view";
 import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
 import { getUserLedger, settleableEntries } from "@/db/queries/payments";
+import { getAppSettings } from "@/db/queries/settings";
+import { greetingIcon, parseHomeTheme } from "@/lib/home-themes";
 import { requireUser } from "@/lib/auth/session";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import { formatServiceDateShort, shiftServiceDate, todayServiceDate } from "@/lib/date";
@@ -23,11 +26,12 @@ export default async function TodayPage({
   const today = todayServiceDate();
   const tomorrow = shiftServiceDate(today, 1);
 
-  const [day, tomorrowDay, ledger] = await Promise.all([
+  const [day, tomorrowDay, ledger, settings] = await Promise.all([
     getMenuDay(today),
     getMenuDay(tomorrow),
     // 90 days back is plenty to surface anything still owed.
     getUserLedger(user.id, shiftServiceDate(today, -90), today),
+    getAppSettings(),
   ]);
 
   const outstanding = settleableEntries(ledger);
@@ -40,6 +44,13 @@ export default async function TodayPage({
     <div className="relative isolate space-y-5">
       <SeasonalBackdrop />
       <GymTimePromo />
+
+      {settings.greetingMessage && (
+        <GreetingBanner
+          message={settings.greetingMessage}
+          icon={greetingIcon(parseHomeTheme(settings.homeTheme))}
+        />
+      )}
 
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Chào {firstName} 👋</h1>

@@ -30,3 +30,8 @@ export const HOME_THEME_SETTINGS = ["none", ...HOME_THEMES.map((theme) => theme.
 export function parseHomeTheme(value: string | null | undefined): HomeThemeSetting {
   return HOME_THEMES.some((theme) => theme.id === value) ? (value as HomeThemeId) : "none";
 }
+
+/** The emoji that fronts the home-page wish: the theme's own, else a generic one. */
+export function greetingIcon(theme: HomeThemeSetting): string {
+  return HOME_THEMES.find((entry) => entry.id === theme)?.preview ?? "🎉";
+}

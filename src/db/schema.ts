@@ -256,6 +256,12 @@ export const appSettings = pgTable("app_settings", {
    * renders as "none".
    */
   homeTheme: text("home_theme").notNull().default("none"),
+  /**
+   * The admin's wish shown in a banner on the home page — "" means no banner.
+   * Dismissal is per browser and keyed on the text itself, so editing the
+   * wish brings the banner back for everyone who closed the old one.
+   */
+  greetingMessage: text("greeting_message").notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

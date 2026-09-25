@@ -10,6 +10,7 @@ import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
 import { displayNameField } from "@/lib/display-name";
+import { GREETING_MAX_LENGTH } from "@/lib/greeting";
 import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 
@@ -161,6 +162,41 @@ export async function updateHomeTheme(input: unknown): Promise<ActionResult> {
       return { ok: false, error: "Giao diện này không tồn tại." };
     }
     return toActionError(cause, "Không đổi được giao diện.");
+  }
+}
+
+const greetingSchema = z.object({
+  greetingMessage: z
+    .string()
+    .trim()
+    .max(GREETING_MAX_LENGTH, `Lời chúc tối đa ${GREETING_MAX_LENGTH} ký tự.`),
+});
+
+/** Sets the home-page wish; an empty string takes the banner down. */
+export async function updateGreeting(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { greetingMessage } = greetingSchema.parse(input);
+
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, greetingMessage, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: appSettings.id,
+        set: { greetingMessage, updatedAt: new Date() },
+      });
+
+    revalidatePath("/");
+    revalidatePath("/admin/settings");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Lời chúc không hợp lệ." };
+    }
+    return toActionError(cause, "Không lưu được lời chúc.");
   }
 }
 

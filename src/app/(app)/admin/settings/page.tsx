@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { SettingsForm } from "@/components/admin/settings-form";
+import { GreetingEditor } from "@/components/admin/greeting-editor";
 import { HomeThemePicker } from "@/components/admin/home-theme-picker";
 import { MemberList } from "@/components/admin/member-list";
 import { ResetOrders } from "@/components/admin/reset-orders";
@@ -43,6 +44,8 @@ export default async function AdminSettingsPage() {
       />
 
       <HomeThemePicker homeTheme={parseHomeTheme(settings.homeTheme)} />
+
+      <GreetingEditor greetingMessage={settings.greetingMessage} />
 
       <MemberList
         members={members.map((member) => ({

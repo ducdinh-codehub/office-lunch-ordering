@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "greeting_message" text DEFAULT '' NOT NULL;
