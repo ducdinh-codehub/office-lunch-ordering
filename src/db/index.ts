@@ -30,11 +30,18 @@ function createDb(): Database {
 }
 
 // Cached on globalThis so Next's dev-mode hot reload doesn't open a new pool on
-// every edit.
-const globalForDb = globalThis as unknown as { __lunchDb?: Database };
+// every edit — but only while the schema is the same one. The client keeps the
+// schema it was built with, so a cached client outliving an edit to schema.ts
+// silently drops the new columns from every `db.query` read until a restart.
+// (Its own key: a module compiled before this shape existed reads `__lunchDb`
+// as a bare client, and must never be handed this pair instead.)
+const globalForDb = globalThis as unknown as {
+  __lunchDbWithSchema?: { db: Database; schema: typeof schema };
+};
 
-export const db: Database = globalForDb.__lunchDb ?? createDb();
+const cached = globalForDb.__lunchDbWithSchema;
+export const db: Database = cached?.schema === schema ? cached.db : createDb();
 
-if (process.env.NODE_ENV !== "production") globalForDb.__lunchDb = db;
+if (process.env.NODE_ENV !== "production") globalForDb.__lunchDbWithSchema = { db, schema };
 
 export { schema };

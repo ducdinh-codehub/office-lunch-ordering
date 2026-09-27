@@ -3,11 +3,13 @@ import { sql } from "drizzle-orm";
 import { SettingsForm } from "@/components/admin/settings-form";
 import { GreetingEditor } from "@/components/admin/greeting-editor";
 import { HomeThemePicker } from "@/components/admin/home-theme-picker";
+import { LuckyEnvelopeSettings } from "@/components/admin/lucky-envelope-settings";
 import { MemberList } from "@/components/admin/member-list";
 import { ResetOrders } from "@/components/admin/reset-orders";
 import { db } from "@/db";
 import { bookings } from "@/db/schema";
 import { getAppSettings } from "@/db/queries/settings";
+import { getEnvelopeStats } from "@/db/queries/lucky-envelopes";
 import { getAllMembers } from "@/db/queries/users";
 import { parseHomeTheme } from "@/lib/home-themes";
 import { fallbackDisplayName } from "@/lib/display-name";
@@ -19,10 +21,11 @@ export const metadata = { title: pageTitle("Cài đặt") };
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [settings, [{ count: bookingCount }], members] = await Promise.all([
+  const [settings, [{ count: bookingCount }], members, envelopeStats] = await Promise.all([
     getAppSettings(),
     db.select({ count: sql<number>`count(*)::int` }).from(bookings),
     getAllMembers(),
+    getEnvelopeStats(),
   ]);
 
   return (
@@ -46,6 +49,12 @@ export default async function AdminSettingsPage() {
       <HomeThemePicker homeTheme={parseHomeTheme(settings.homeTheme)} />
 
       <GreetingEditor greetingMessage={settings.greetingMessage} />
+
+      <LuckyEnvelopeSettings
+        enabled={settings.luckyEnvelopeEnabled}
+        opened={envelopeStats.opened}
+        byPercent={envelopeStats.byPercent}
+      />
 
       <MemberList
         members={members.map((member) => ({

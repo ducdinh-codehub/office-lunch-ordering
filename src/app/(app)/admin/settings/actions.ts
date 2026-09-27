@@ -5,7 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { appSettings, bookings, dayOrders, payments, users } from "@/db/schema";
+import { appSettings, bookings, dayOrders, luckyEnvelopes, payments, users } from "@/db/schema";
 import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -275,6 +275,8 @@ export async function resetOrderHistory(input: unknown): Promise<ActionResult<nu
     await db.delete(payments);
     await db.delete(bookings);
     await db.delete(dayOrders);
+    // The days any lì xì discounted are gone with them.
+    await db.delete(luckyEnvelopes);
 
     revalidatePath("/");
     revalidatePath("/admin/settings");
@@ -284,5 +286,66 @@ export async function resetOrderHistory(input: unknown): Promise<ActionResult<nu
     return actionOk(bookingCount);
   } catch (cause) {
     return toActionError(cause, "Không xoá được dữ liệu.");
+  }
+}
+
+/** Every page an envelope's discount or its overlay shows on. */
+function revalidateLuckyEnvelopePages() {
+  revalidatePath("/");
+  revalidatePath("/me/bookings");
+  revalidatePath("/me/payments");
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/settings");
+}
+
+const luckyEnvelopeSchema = z.object({ enabled: z.boolean() });
+
+/**
+ * Turns the lì xì may mắn on or off — the switch and nothing else. Envelopes
+ * already opened are kept either way: off only hides the envelope from anyone
+ * who has not opened theirs, the discounts already won still count, and on
+ * again resumes the same round. Starting a new round is `resetLuckyEnvelopes`.
+ */
+export async function setLuckyEnvelopeEnabled(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { enabled } = luckyEnvelopeSchema.parse(input);
+
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, luckyEnvelopeEnabled: enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: appSettings.id,
+        set: { luckyEnvelopeEnabled: enabled, updatedAt: new Date() },
+      });
+
+    revalidateLuckyEnvelopePages();
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không đổi được lì xì.");
+  }
+}
+
+/**
+ * Starts a new round: every envelope is deleted, so everyone gets a fresh one
+ * (once the feature is on). The only thing that wipes them — discounts on
+ * unpaid days are taken back; a claimed day keeps the amount on its payments
+ * row.
+ */
+export async function resetLuckyEnvelopes(): Promise<ActionResult<number>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const removed = await db.delete(luckyEnvelopes).returning({ id: luckyEnvelopes.id });
+
+    revalidateLuckyEnvelopePages();
+    return actionOk(removed.length);
+  } catch (cause) {
+    return toActionError(cause, "Không đặt lại được lì xì.");
   }
 }

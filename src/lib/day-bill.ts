@@ -8,6 +8,8 @@ import {
 } from "@/db/queries/bookings";
 import { getMenuDay } from "@/db/queries/menu";
 import { getPaymentRoster, type PaymentState } from "@/db/queries/payments";
+import { envelopeKey, getEnvelopePercents } from "@/db/queries/lucky-envelopes";
+import { luckyDiscountVnd } from "@/lib/lucky-envelope";
 import type { ServiceDate } from "@/lib/date";
 import { DEFAULT_SLOT, type MenuSlot } from "@/lib/menu-slot";
 import { fallbackDisplayName } from "@/lib/display-name";
@@ -22,9 +24,11 @@ export type DayBillDiner = {
   extrasVnd: number;
   shipVnd: number;
   /**
-   * What this sitting charges them: set + extras + ship, the same three parts
-   * the payment roster adds up. Not the roster's figure itself — that is per
-   * date, so on a date with a party it would carry both sittings' money.
+   * What this sitting charges them: set + extras + ship, less their lì xì if
+   * they opened it this date — the same parts the payment roster adds up. Not
+   * the roster's figure itself — that is per date, so on a date with a party it
+   * would carry both sittings' money. (On such a date the lì xì is rounded per
+   * sitting here and per date there, so the two can differ by a đồng.)
    */
   totalVnd: number;
   /**
@@ -59,12 +63,13 @@ export async function getDayBill(
   const day = await getMenuDay(date, slot);
   const menuDayId = day?.id;
 
-  const [kitchenLines, people, setOrders, roster, shipShares] = await Promise.all([
+  const [kitchenLines, people, setOrders, roster, shipShares, envelopes] = await Promise.all([
     menuDayId ? getKitchenSummary(menuDayId) : [],
     menuDayId ? getDayBookingsByPerson(menuDayId) : [],
     menuDayId ? getDayOrdersByPerson(menuDayId) : [],
     getPaymentRoster(date, date),
     getShipShares({ dates: [date] }),
+    getEnvelopePercents({ dates: [date] }),
   ]);
 
   // A date with two sittings has a share per sitting; only this one's counts.
@@ -111,8 +116,10 @@ export async function getDayBill(
   }
 
   const list = [...diners.values()];
-  for (const diner of list) {
-    diner.totalVnd = diner.setVnd + diner.extrasVnd + diner.shipVnd;
+  for (const [userId, diner] of diners) {
+    const gross = diner.setVnd + diner.extrasVnd + diner.shipVnd;
+    const percent = envelopes.get(envelopeKey(userId, date));
+    diner.totalVnd = percent === undefined ? gross : gross - luckyDiscountVnd(gross, percent);
   }
   return {
     date,

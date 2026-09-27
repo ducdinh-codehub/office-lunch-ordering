@@ -5,6 +5,8 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, dayOrders, menuDays, menuItems, payments, users, PAID_CATEGORIES } from "@/db/schema";
 import { getShipShares, getUserDailyTotals } from "./bookings";
+import { envelopeKey, getEnvelopePercents } from "./lucky-envelopes";
+import { luckyDiscountVnd } from "@/lib/lucky-envelope";
 import type { ServiceDate } from "@/lib/date";
 
 export type PaymentState = "unpaid" | "pending" | "confirmed" | "rejected";
@@ -16,6 +18,8 @@ export type DayLedgerEntry = {
   paymentId: string | null;
   claimId: string | null;
   note: string | null;
+  /** The lì xì % already taken off `owedVnd`, on the day it was opened. */
+  luckyPercent: number | null;
 };
 
 /**
@@ -54,6 +58,7 @@ export async function getUserLedger(
       paymentId: payment?.id ?? null,
       claimId: payment?.claimId ?? null,
       note: payment?.note ?? null,
+      luckyPercent: row.luckyPercent,
     };
   });
 }
@@ -144,6 +149,14 @@ export async function getPaymentRoster(
   for (const share of await getShipShares({ from, to })) {
     const existing = merged.get(`${share.userId}:${share.serviceDate}`);
     if (existing) existing.owedVnd = Number(existing.owedVnd) + share.shareVnd;
+  }
+  // And, on the finished day, anyone's lì xì — the same rule the ledger uses.
+  const envelopes = await getEnvelopePercents({ from, to });
+  for (const row of merged.values()) {
+    const percent = envelopes.get(envelopeKey(row.userId, row.serviceDate));
+    if (percent !== undefined) {
+      row.owedVnd = Number(row.owedVnd) - luckyDiscountVnd(Number(row.owedVnd), percent);
+    }
   }
 
   const bookingRows = [...merged.values()].sort(

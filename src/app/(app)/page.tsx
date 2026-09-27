@@ -3,12 +3,14 @@ import { ArrowRight } from "lucide-react";
 
 import { GreetingBanner } from "@/components/greeting-banner";
 import { GymTimePromo } from "@/components/gym-time-promo";
+import { LuckyEnvelope } from "@/components/lucky-envelope";
 import { MenuDayView } from "@/components/menu/menu-day-view";
 import { SlotSection } from "@/components/menu/slot-section";
 import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
 import { getUserBookingsForDay } from "@/db/queries/bookings";
+import { getUserEnvelope } from "@/db/queries/lucky-envelopes";
 import { SLOT_LABEL, resolveActiveSlot } from "@/lib/menu-slot";
 import { getUserLedger, settleableEntries } from "@/db/queries/payments";
 import { getAppSettings } from "@/db/queries/settings";
@@ -29,16 +31,23 @@ export default async function TodayPage({
   const today = todayServiceDate();
   const tomorrow = shiftServiceDate(today, 1);
 
-  const [lunchDay, afternoonDay, tomorrowDay, ledger, settings] = await Promise.all([
+  const [lunchDay, afternoonDay, tomorrowDay, ledger, settings, envelope] = await Promise.all([
     getMenuDay(today),
     getMenuDay(today, "afternoon"),
     getMenuDay(tomorrow),
     // 90 days back is plenty to surface anything still owed.
     getUserLedger(user.id, shiftServiceDate(today, -90), today),
     getAppSettings(),
+    getUserEnvelope(user.id),
   ]);
 
   const outstanding = settleableEntries(ledger);
+
+  // The lì xì: while the feature is on and theirs is unopened — and not on a
+  // day already claimed or paid, whose amount is fixed (the action refuses too).
+  const todayEntry = ledger.find((entry) => entry.serviceDate === today);
+  const todayPaid = todayEntry?.state === "pending" || todayEntry?.state === "confirmed";
+  const showEnvelope = settings.luckyEnvelopeEnabled && envelope === null && !todayPaid;
   const outstandingTotal = outstanding.reduce((total, entry) => total + entry.owedVnd, 0);
 
   const firstName = (user.displayName ?? user.email.split("@")[0]).split(" ")[0];
@@ -79,6 +88,8 @@ export default async function TodayPage({
     <div className="relative isolate space-y-5">
       <SeasonalBackdrop />
       <GymTimePromo />
+      {/* Always rendered — see LuckyEnvelope for why the reveal needs it. */}
+      <LuckyEnvelope eligible={showEnvelope} />
 
       {settings.greetingMessage && (
         <GreetingBanner

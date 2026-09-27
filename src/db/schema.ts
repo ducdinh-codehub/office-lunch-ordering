@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -10,7 +11,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 /* ────────────────────────────────── enums ────────────────────────────────── */
 
@@ -282,8 +283,44 @@ export const appSettings = pgTable("app_settings", {
    * wish brings the banner back for everyone who closed the old one.
    */
   greetingMessage: text("greeting_message").notNull().default(""),
+  /**
+   * Whether the lì xì may mắn is offered. Turning it off wipes
+   * `lucky_envelopes`, so turning it back on gives everyone a fresh envelope.
+   */
+  luckyEnvelopeEnabled: boolean("lucky_envelope_enabled").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* ───────────────────────────── lucky envelopes ───────────────────────────── */
+
+/**
+ * Lì xì may mắn: who has opened their envelope, and what it gave them.
+ *
+ * One row per person — the unique `user_id` is the "only once" rule, so two
+ * taps racing each other still open one envelope. The % comes off that
+ * person's whole bill for `service_date`, the day they opened it
+ * (`src/lib/lucky-envelope.ts` has the rule every total applies). Rows are
+ * deleted wholesale when the admin turns the feature off or resets it; that
+ * takes the discount back from any day not yet paid, while a claimed day keeps
+ * the amount written on its `payments` row.
+ */
+export const luckyEnvelopes = pgTable(
+  "lucky_envelopes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    serviceDate: date("service_date").notNull(),
+    percent: integer("percent").notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("lucky_envelopes_date_idx").on(t.serviceDate),
+    check("lucky_envelopes_percent_check", sql`${t.percent} in (5, 10, 20)`),
+  ],
+);
 
 /* ──────────────────────────────── relations ──────────────────────────────── */
 
@@ -331,5 +368,6 @@ export type Booking = typeof bookings.$inferSelect;
 export type DayOrder = typeof dayOrders.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
+export type LuckyEnvelope = typeof luckyEnvelopes.$inferSelect;
 export type SetTierKey = (typeof setTier.enumValues)[number];
 export type MenuSlot = (typeof menuSlot.enumValues)[number];
