@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   CalendarDays,
   ClipboardList,
+  Flag,
   ReceiptText,
   Settings2,
   UtensilsCrossed,
@@ -18,6 +19,7 @@ const userLinks = [
   { href: "/", label: "Hôm nay", icon: UtensilsCrossed },
   { href: "/me/bookings", label: "Đơn của tôi", icon: CalendarDays },
   { href: "/me/payments", label: "Thanh toán", icon: Wallet },
+  { href: "/race", label: "Đua", icon: Flag },
 ];
 
 const adminLinks = [
