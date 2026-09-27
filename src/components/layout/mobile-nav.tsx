@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays,
   ChevronDown,
+  ClipboardList,
+  Flag,
   ReceiptText,
   Settings2,
   UtensilsCrossed,
@@ -33,7 +35,9 @@ const ICONS: Record<string, LucideIcon> = {
   "/": UtensilsCrossed,
   "/me/bookings": CalendarDays,
   "/me/payments": Wallet,
+  "/race": Flag,
   "/admin/menu": UtensilsCrossed,
+  "/admin/bookings": ClipboardList,
   "/admin/payments": ReceiptText,
   "/admin/settings": Settings2,
 };

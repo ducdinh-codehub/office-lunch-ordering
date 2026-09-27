@@ -8,7 +8,7 @@ import { todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: pageTitle("Đua khủng long") };
+export const metadata = { title: pageTitle("Đua vui") };
 
 export default async function RacePage() {
   await requireUser();
@@ -32,10 +32,10 @@ export default async function RacePage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Đua khủng long 🦖</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Đua vui 🏁</h1>
         <p className="text-muted-foreground text-sm">
-          Chọn ai chạy và chạy bao lâu, rồi cùng xem ai về nhất — ai đi lấy cơm, ai được bao nước.
-          Chỉ để vui, không ảnh hưởng hoá đơn.
+          Tự lập danh sách, chọn đua bằng gì và bao lâu, rồi cùng xem ai về nhất — ai đi lấy cơm,
+          ai được bao nước.
         </p>
       </div>
 
