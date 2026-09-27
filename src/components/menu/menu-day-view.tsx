@@ -17,7 +17,8 @@ import {
   type SetTier,
 } from "@/lib/set-tiers";
 import { getShipShares, getUserBookingsForDay, getUserSetPriceForDay } from "@/db/queries/bookings";
-import { getUserEnvelope } from "@/db/queries/lucky-envelopes";
+import { discountKey, getDayDiscounts } from "@/db/queries/day-discounts";
+import { BIRTHDAY_PERCENT } from "@/lib/birthday";
 import { DEFAULT_SLOT, SLOT_LABEL, type MenuSlot } from "@/lib/menu-slot";
 import { formatInstant, formatServiceDate, type ServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
@@ -71,16 +72,19 @@ export async function MenuDayView({
 }) {
   // Everything below is scoped to this one menu. A date can hold a lunch and an
   // afternoon party, and each card shows only its own dishes, suất and ship fee.
-  const [myBookings, lockedSetPrice, allShipShares, envelope] = await Promise.all([
+  const [myBookings, lockedSetPrice, allShipShares, discounts] = await Promise.all([
     day ? getUserBookingsForDay(userId, day.id) : [],
     day ? getUserSetPriceForDay(userId, day.id) : null,
     day ? getShipShares({ dates: [serviceDate] }) : [],
-    getUserEnvelope(userId),
+    getDayDiscounts({ dates: [serviceDate], userId }),
   ]);
-  // A lì xì opened on this date. It comes off the whole day's total — lunch and
-  // any party together — so this card names it rather than subtracting its own
-  // share, which would round differently from the amount they are asked to pay.
-  const luckyPercent = envelope?.serviceDate === serviceDate ? envelope.percent : null;
+  // A lì xì opened on this date, and their birthday. Both come off the whole
+  // day's total — lunch and any party together — so this card names them rather
+  // than subtracting its own share, which would round differently from the
+  // amount they are asked to pay.
+  const discount = discounts.get(discountKey(userId, serviceDate));
+  const luckyPercent = discount?.luckyPercent ?? null;
+  const isBirthday = discount?.birthday ?? false;
 
   const shipShares = allShipShares.filter((share) => share.menuDayId === day?.id);
   const myShipVnd = shipShares.find((share) => share.userId === userId)?.shareVnd ?? 0;
@@ -353,6 +357,12 @@ export async function MenuDayView({
             {luckyPercent !== null && (
               <p className="flex items-center justify-between rounded-md bg-red-50 px-2 py-1 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200">
                 <span>🧧 Lì xì giảm {luckyPercent}%</span>
+                <span>trừ khi thanh toán</span>
+              </p>
+            )}
+            {isBirthday && (
+              <p className="flex items-center justify-between rounded-md bg-pink-50 px-2 py-1 text-xs text-pink-800 dark:bg-pink-950/40 dark:text-pink-200">
+                <span>🎂 Sinh nhật giảm {BIRTHDAY_PERCENT}%</span>
                 <span>trừ khi thanh toán</span>
               </p>
             )}

@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { claimPayment, withdrawClaim } from "@/app/(app)/me/payments/actions";
+import { BIRTHDAY_PERCENT } from "@/lib/birthday";
 import { formatServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import type { DayLedgerEntry, PaymentState } from "@/db/queries/payments";
@@ -158,6 +159,11 @@ export function SettleUp({
                 {entry.luckyPercent !== null && (
                   <Badge variant="outline" className="border-red-200 text-xs text-red-700">
                     🧧 −{entry.luckyPercent}%
+                  </Badge>
+                )}
+                {entry.birthday && (
+                  <Badge variant="outline" className="border-pink-200 text-xs text-pink-700">
+                    🎂 −{BIRTHDAY_PERCENT}%
                   </Badge>
                 )}
                 {entry.state === "rejected" && (

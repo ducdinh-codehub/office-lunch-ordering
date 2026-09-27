@@ -13,7 +13,8 @@ export function envelopeKey(userId: string, serviceDate: ServiceDate): string {
 
 /**
  * The envelope discounts that fall in a date range or on a set of dates, as
- * `envelopeKey` → percent. Optionally for one person only.
+ * `envelopeKey` → percent. Optionally for one person only. Totals read this
+ * through `getDayDiscounts`, which adds birthdays on top.
  *
  * Deliberately not gated on the feature switch: turning it off keeps the
  * rows, and a discount already won still counts. Only a reset takes it back.

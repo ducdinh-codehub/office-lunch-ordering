@@ -1,0 +1,3 @@
+ALTER TABLE "users" ADD COLUMN "birth_month" smallint;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "birth_day" smallint;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_birthday_check" CHECK (("users"."birth_month" is null and "users"."birth_day" is null) or ("users"."birth_month" is not null and "users"."birth_day" is not null and "users"."birth_month" between 1 and 12 and "users"."birth_day" between 1 and 31));

@@ -1,14 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireUser } from "@/lib/auth/session";
+import { birthdayField } from "@/lib/birthday";
 import { displayNameField } from "@/lib/display-name";
-import { actionOk, toActionError, type ActionResult } from "@/lib/action-result";
+import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 
 // Empty means "go back to the default" — see `displayNameField`.
 const displayNameSchema = z.object({ displayName: displayNameField });
@@ -38,5 +39,39 @@ export async function updateDisplayName(input: unknown): Promise<ActionResult> {
       return { ok: false, error: cause.issues[0]?.message ?? "Tên hiển thị không hợp lệ." };
     }
     return toActionError(cause, "Không đổi được tên hiển thị.");
+  }
+}
+
+const birthdaySchema = z.object({ birthday: birthdayField });
+
+/**
+ * Sets the signed-in user's birthday — once. The birthday takes 10% off that
+ * day's bill, so a birthday you could move at will would be a discount you
+ * could claim at will: after the first save only the admin can change it.
+ *
+ * "Once" is the `birth_month is null` in the update itself, not a read before
+ * it, so two saves racing each other cannot both land.
+ */
+export async function setOwnBirthday(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const { birthday } = birthdaySchema.parse(input);
+
+    const [updated] = await db
+      .update(users)
+      .set({ birthMonth: birthday.month, birthDay: birthday.day })
+      .where(and(eq(users.id, user.id), isNull(users.birthMonth)))
+      .returning({ id: users.id });
+
+    if (!updated) fail("Bạn đã lưu ngày sinh rồi. Nhờ quản lý sửa nếu bị nhầm.");
+
+    // Today's bill may have just become a birthday one.
+    revalidatePath("/", "layout");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Ngày sinh không hợp lệ." };
+    }
+    return toActionError(cause, "Không lưu được ngày sinh.");
   }
 }

@@ -16,6 +16,7 @@ import { getUserLedger, settleableEntries } from "@/db/queries/payments";
 import { getAppSettings } from "@/db/queries/settings";
 import { greetingIcon, parseHomeTheme } from "@/lib/home-themes";
 import { requireUser } from "@/lib/auth/session";
+import { BIRTHDAY_PERCENT, isBirthdayOn, toBirthday } from "@/lib/birthday";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import { formatServiceDateShort, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
@@ -51,6 +52,7 @@ export default async function TodayPage({
   const outstandingTotal = outstanding.reduce((total, entry) => total + entry.owedVnd, 0);
 
   const firstName = (user.displayName ?? user.email.split("@")[0]).split(" ")[0];
+  const birthdayToday = isBirthdayOn(toBirthday(user.birthMonth, user.birthDay), today);
   const tomorrowIsBookable = tomorrowDay && tomorrowDay.status !== "draft";
 
   // With a published party, today holds two menus, and each becomes a section
@@ -102,6 +104,25 @@ export default async function TodayPage({
         <h1 className="text-2xl font-semibold tracking-tight">Chào {firstName} 👋</h1>
         <p className="text-muted-foreground text-sm">Hôm nay có món gì nào.</p>
       </div>
+
+      {birthdayToday && (
+        <Card className="border-pink-200 bg-pink-50 dark:border-pink-900 dark:bg-pink-950/40">
+          <CardContent className="flex items-center gap-3 py-4">
+            <span aria-hidden className="text-3xl">
+              🎂
+            </span>
+            <div>
+              <p className="font-medium text-pink-900 dark:text-pink-200">
+                Chúc mừng sinh nhật {firstName}!
+              </p>
+              <p className="text-sm text-pink-800/80 dark:text-pink-300/70">
+                Hoá đơn hôm nay của bạn được giảm {BIRTHDAY_PERCENT}% — cộng thêm lì xì nếu bạn mở
+                trúng.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {outstandingTotal > 0 && (
         <Link href="/me/payments" className="block">

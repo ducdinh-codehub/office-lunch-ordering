@@ -5,6 +5,7 @@ import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
 import { Card, CardContent } from "@/components/ui/card";
 import { getUserDailyTotals } from "@/db/queries/bookings";
 import { requireUser } from "@/lib/auth/session";
+import { BIRTHDAY_PERCENT } from "@/lib/birthday";
 import { formatServiceDate, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import { pageTitle } from "@/lib/app-name";
@@ -78,6 +79,12 @@ export default async function MyBookingsPage() {
                     <span className="text-red-700 dark:text-red-400">
                       {" "}
                       · 🧧 lì xì −{day.luckyPercent}%
+                    </span>
+                  )}
+                  {day.birthday && (
+                    <span className="text-pink-700 dark:text-pink-400">
+                      {" "}
+                      · 🎂 sinh nhật −{BIRTHDAY_PERCENT}%
                     </span>
                   )}
                 </p>

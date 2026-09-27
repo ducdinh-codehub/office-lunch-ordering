@@ -15,8 +15,8 @@ import {
   type SetTierKey,
 } from "@/db/schema";
 import { resolveSetTier } from "@/lib/set-tiers";
-import { luckyDiscountVnd } from "@/lib/lucky-envelope";
-import { envelopeKey, getEnvelopePercents } from "./lucky-envelopes";
+import { discountPercent, discountVnd } from "@/lib/day-discount";
+import { discountKey, getDayDiscounts } from "./day-discounts";
 import { splitEvenly } from "@/lib/money";
 import type { ServiceDate } from "@/lib/date";
 
@@ -117,11 +117,13 @@ export type DailyTotal = {
   /** This person's slice of the day's delivery fee, across every menu that day. */
   shipVnd: number;
   /**
-   * What their lì xì took off, already subtracted from `totalVnd` — 0 on every
-   * day but the one they opened it. `luckyPercent` is null on those days.
+   * What came off, already subtracted from `totalVnd`: their lì xì on the day
+   * they opened it, plus 10% on their birthday — 0 on every other day.
+   * `luckyPercent` is null on a day without a lì xì.
    */
-  luckyDiscountVnd: number;
+  discountVnd: number;
   luckyPercent: number | null;
+  birthday: boolean;
 };
 
 /**
@@ -144,7 +146,7 @@ export async function getUserDailyTotals(
 ): Promise<DailyTotal[]> {
   const inRange = and(gte(menuDays.serviceDate, from), lte(menuDays.serviceDate, to));
 
-  const [itemRows, setRows, setPickRows, shipShares, envelopes] = await Promise.all([
+  const [itemRows, setRows, setPickRows, shipShares, discounts] = await Promise.all([
     db
       .select({
         serviceDate: menuDays.serviceDate,
@@ -185,7 +187,7 @@ export async function getUserDailyTotals(
         ),
       ),
     getShipShares({ from, to }),
-    getEnvelopePercents({ from, to, userId }),
+    getDayDiscounts({ from, to, userId }),
   ]);
 
   const byDate = new Map<ServiceDate, DailyTotal>();
@@ -197,8 +199,9 @@ export async function getUserDailyTotals(
       setCount: 0,
       incompleteSet: false,
       shipVnd: 0,
-      luckyDiscountVnd: 0,
+      discountVnd: 0,
       luckyPercent: null,
+      birthday: false,
     });
   }
   for (const row of setRows) {
@@ -215,8 +218,9 @@ export async function getUserDailyTotals(
         setCount: 1,
         incompleteSet: false,
         shipVnd: 0,
-        luckyDiscountVnd: 0,
+        discountVnd: 0,
         luckyPercent: null,
+        birthday: false,
       });
     }
   }
@@ -240,13 +244,15 @@ export async function getUserDailyTotals(
     }
   }
 
-  // Last, once the day's total is complete: the lì xì comes off all of it.
+  // Last, once the day's total is complete: the lì xì and the birthday come
+  // off all of it.
   for (const day of byDate.values()) {
-    const percent = envelopes.get(envelopeKey(userId, day.serviceDate));
-    if (percent === undefined) continue;
-    day.luckyPercent = percent;
-    day.luckyDiscountVnd = luckyDiscountVnd(day.totalVnd, percent);
-    day.totalVnd -= day.luckyDiscountVnd;
+    const discount = discounts.get(discountKey(userId, day.serviceDate));
+    if (!discount) continue;
+    day.luckyPercent = discount.luckyPercent;
+    day.birthday = discount.birthday;
+    day.discountVnd = discountVnd(day.totalVnd, discountPercent(discount));
+    day.totalVnd -= day.discountVnd;
   }
 
   return [...byDate.values()].sort((a, b) => (a.serviceDate < b.serviceDate ? 1 : -1));
@@ -261,7 +267,7 @@ export async function getUserTotalsForDates(
 
   const onDates = inArray(menuDays.serviceDate, serviceDates);
 
-  const [itemRows, setRows, shipShares, envelopes] = await Promise.all([
+  const [itemRows, setRows, shipShares, discounts] = await Promise.all([
     db
       .select({
         serviceDate: menuDays.serviceDate,
@@ -285,7 +291,7 @@ export async function getUserTotalsForDates(
       .innerJoin(menuDays, eq(menuDays.id, dayOrders.menuDayId))
       .where(and(eq(dayOrders.userId, userId), onDates)),
     getShipShares({ dates: serviceDates }),
-    getEnvelopePercents({ dates: serviceDates, userId }),
+    getDayDiscounts({ dates: serviceDates, userId }),
   ]);
 
   const totals = new Map<ServiceDate, number>();
@@ -301,10 +307,10 @@ export async function getUserTotalsForDates(
     if (!totals.has(share.serviceDate)) continue;
     totals.set(share.serviceDate, totals.get(share.serviceDate)! + share.shareVnd);
   }
-  // The lì xì, on the finished total — the same rule getUserDailyTotals applies.
+  // The discounts, on the finished total — the same rule getUserDailyTotals applies.
   for (const [serviceDate, total] of totals) {
-    const percent = envelopes.get(envelopeKey(userId, serviceDate));
-    if (percent !== undefined) totals.set(serviceDate, total - luckyDiscountVnd(total, percent));
+    const percent = discountPercent(discounts.get(discountKey(userId, serviceDate)));
+    totals.set(serviceDate, total - discountVnd(total, percent));
   }
   return totals;
 }

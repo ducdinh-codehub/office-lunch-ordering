@@ -5,8 +5,8 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookings, dayOrders, menuDays, menuItems, payments, users, PAID_CATEGORIES } from "@/db/schema";
 import { getShipShares, getUserDailyTotals } from "./bookings";
-import { envelopeKey, getEnvelopePercents } from "./lucky-envelopes";
-import { luckyDiscountVnd } from "@/lib/lucky-envelope";
+import { discountKey, getDayDiscounts } from "./day-discounts";
+import { discountPercent, discountVnd } from "@/lib/day-discount";
 import type { ServiceDate } from "@/lib/date";
 
 export type PaymentState = "unpaid" | "pending" | "confirmed" | "rejected";
@@ -20,6 +20,8 @@ export type DayLedgerEntry = {
   note: string | null;
   /** The lì xì % already taken off `owedVnd`, on the day it was opened. */
   luckyPercent: number | null;
+  /** True on their birthday — 10% already taken off `owedVnd`. */
+  birthday: boolean;
 };
 
 /**
@@ -59,6 +61,7 @@ export async function getUserLedger(
       claimId: payment?.claimId ?? null,
       note: payment?.note ?? null,
       luckyPercent: row.luckyPercent,
+      birthday: row.birthday,
     };
   });
 }
@@ -150,13 +153,12 @@ export async function getPaymentRoster(
     const existing = merged.get(`${share.userId}:${share.serviceDate}`);
     if (existing) existing.owedVnd = Number(existing.owedVnd) + share.shareVnd;
   }
-  // And, on the finished day, anyone's lì xì — the same rule the ledger uses.
-  const envelopes = await getEnvelopePercents({ from, to });
+  // And, on the finished day, anyone's lì xì and birthday — the same rule the
+  // ledger uses.
+  const discounts = await getDayDiscounts({ from, to });
   for (const row of merged.values()) {
-    const percent = envelopes.get(envelopeKey(row.userId, row.serviceDate));
-    if (percent !== undefined) {
-      row.owedVnd = Number(row.owedVnd) - luckyDiscountVnd(Number(row.owedVnd), percent);
-    }
+    const percent = discountPercent(discounts.get(discountKey(row.userId, row.serviceDate)));
+    row.owedVnd = Number(row.owedVnd) - discountVnd(Number(row.owedVnd), percent);
   }
 
   const bookingRows = [...merged.values()].sort(

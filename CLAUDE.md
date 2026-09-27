@@ -154,15 +154,27 @@ bug, not a style issue.
   `lucky_envelopes` holds one row per user — the unique `user_id` *is* the
   "only once" rule — with the date it was opened and 5, 10 or 20 (a check
   constraint). The prize is drawn server-side (`crypto.randomInt`, odds in
-  `src/lib/lucky-envelope.ts`), and `luckyDiscountVnd()` is the only place the
-  discount is computed: `getUserDailyTotals`, `getUserTotalsForDates`, the
-  roster and the bill export all apply it to the *finished* day total (food,
-  suất, ship). The quán's bill is untouched — the admin pays for it. Turning
-  the feature off only hides the unopened envelope; opened ones keep their
-  discount and turning it on again resumes the round. Resetting is what deletes
-  every row: unpaid days go back to full price, a claimed day keeps the amount
-  on its `payments` row. Opening is
-  refused on a day already claimed, whose amount is fixed.
+  `src/lib/lucky-envelope.ts`). The quán's bill is untouched — the admin pays
+  for it. Turning the feature off only hides the unopened envelope; opened ones
+  keep their discount and turning it on again resumes the round. Resetting is
+  what deletes every row: unpaid days go back to full price, a claimed day
+  keeps the amount on its `payments` row. Opening is refused on a day already
+  claimed, whose amount is fixed.
+- **A birthday takes 10% off that day, on top of any lì xì.** `users` holds
+  `birth_month` / `birth_day` — no year, both or neither (a check constraint).
+  A diner sets theirs **once** (`setOwnBirthday` only writes where
+  `birth_month is null`, in the update itself); after that only the admin's
+  member list changes or clears it, because a movable birthday is a discount
+  on demand. 29 February is celebrated on the 28th in a common year
+  (`src/lib/birthday.ts`).
+- **Every discount goes through one lookup and one rounding.**
+  `getDayDiscounts()` returns the lì xì and the birthday per person per date;
+  `discountPercent()` adds them and `discountVnd()` (`src/lib/day-discount.ts`)
+  is the only place the amount is computed — once, on the summed percentage.
+  `getUserDailyTotals`, `getUserTotalsForDates`, the roster and the bill export
+  all apply it to the *finished* day total (food, suất, ship). Reading
+  `lucky_envelopes` or the birthday columns directly for a total would let one
+  page disagree with what a claim charges.
 - **Money is integer VND.** No floats, no decimals, anywhere. Booking quantity is
   capped at 99 for that reason alone — `quantity × unit_price_vnd` has to stay
   inside a 32-bit integer. It is not a product limit on how much someone may eat.

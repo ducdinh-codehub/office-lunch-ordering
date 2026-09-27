@@ -9,6 +9,7 @@ import { appSettings, bookings, dayOrders, luckyEnvelopes, payments, users } fro
 import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
+import { birthdayField } from "@/lib/birthday";
 import { displayNameField } from "@/lib/display-name";
 import { GREETING_MAX_LENGTH } from "@/lib/greeting";
 import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
@@ -250,6 +251,46 @@ export async function renameMember(input: unknown): Promise<ActionResult> {
       return { ok: false, error: cause.issues[0]?.message ?? "Tên hiển thị không hợp lệ." };
     }
     return toActionError(cause, "Không đổi được tên của người này.");
+  }
+}
+
+const memberBirthdaySchema = z.object({
+  userId: z.string().uuid(),
+  // Null clears it, which also lets the person set it themselves again.
+  birthday: birthdayField.nullable(),
+});
+
+/**
+ * Sets, corrects or clears somebody's birthday. A diner may only set their own
+ * once (`setOwnBirthday`), so this is where a mistake gets fixed.
+ *
+ * A day already claimed keeps the amount on its payments row; only unpaid days
+ * are re-priced by a change here.
+ */
+export async function setMemberBirthday(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { userId, birthday } = memberBirthdaySchema.parse(input);
+
+    const [updated] = await db
+      .update(users)
+      .set({ birthMonth: birthday?.month ?? null, birthDay: birthday?.day ?? null })
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+
+    if (!updated) fail("Không tìm thấy người này.");
+
+    // Their totals move on every page that shows money.
+    revalidatePath("/", "layout");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Ngày sinh không hợp lệ." };
+    }
+    return toActionError(cause, "Không lưu được ngày sinh.");
   }
 }
 

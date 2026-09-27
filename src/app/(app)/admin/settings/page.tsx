@@ -14,6 +14,7 @@ import { getAllMembers } from "@/db/queries/users";
 import { parseHomeTheme } from "@/lib/home-themes";
 import { fallbackDisplayName } from "@/lib/display-name";
 import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
+import { toBirthday } from "@/lib/birthday";
 import { pageTitle } from "@/lib/app-name";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export default async function AdminSettingsPage() {
           fallbackName: fallbackDisplayName(member.email),
           email: member.email,
           photoUrl: member.photoUrl,
+          birthday: toBirthday(member.birthMonth, member.birthDay),
           // Admin is ADMIN_EMAILS, evaluated here on the server — there is no
           // role column and nothing admin-ish is sent to the client but this.
           isAdmin: isAdminEmail(member.email),

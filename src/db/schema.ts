@@ -6,6 +6,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -68,15 +69,31 @@ export const paymentStatus = pgEnum("payment_status", [
 
 /* ────────────────────────────────── users ────────────────────────────────── */
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // Clerk owns identity; this is the join key back to it.
-  clerkUserId: text("clerk_user_id").notNull().unique(),
-  email: text("email").notNull().unique(),
-  displayName: text("display_name"),
-  photoUrl: text("photo_url"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Clerk owns identity; this is the join key back to it.
+    clerkUserId: text("clerk_user_id").notNull().unique(),
+    email: text("email").notNull().unique(),
+    displayName: text("display_name"),
+    photoUrl: text("photo_url"),
+    // The birthday, as day and month only — the year buys nothing and is
+    // nobody's business. Both or neither; the diner sets it once, the admin
+    // may change it. See src/lib/birthday.ts.
+    birthMonth: smallint("birth_month"),
+    birthDay: smallint("birth_day"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "users_birthday_check",
+      // `is not null` spelled out: `null between 1 and 31` is null, not false, and
+      // a check that yields null passes — a month with no day would slip through.
+      sql`(${t.birthMonth} is null and ${t.birthDay} is null) or (${t.birthMonth} is not null and ${t.birthDay} is not null and ${t.birthMonth} between 1 and 12 and ${t.birthDay} between 1 and 31)`,
+    ),
+  ],
+);
 
 /* ──────────────────────────────── menu days ──────────────────────────────── */
 

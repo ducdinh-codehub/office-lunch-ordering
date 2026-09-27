@@ -28,6 +28,8 @@ export type Member = {
   displayName: string | null;
   email: string;
   photoUrl: string | null;
+  birthMonth: number | null;
+  birthDay: number | null;
 };
 
 /** Everyone with an account, for the admin's member list. */
@@ -38,6 +40,8 @@ export async function getAllMembers(): Promise<Member[]> {
       displayName: users.displayName,
       email: users.email,
       photoUrl: users.photoUrl,
+      birthMonth: users.birthMonth,
+      birthDay: users.birthDay,
     })
     .from(users)
     .orderBy(asc(users.displayName), asc(users.email));

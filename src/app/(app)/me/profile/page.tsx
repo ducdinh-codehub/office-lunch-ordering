@@ -1,6 +1,8 @@
+import { BirthdayCard } from "@/components/me/birthday-card";
 import { ProfileForm } from "@/components/me/profile-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
+import { toBirthday } from "@/lib/birthday";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,8 @@ export default async function ProfilePage() {
         email={user.email}
         photoUrl={user.photoUrl}
       />
+
+      <BirthdayCard birthday={toBirthday(user.birthMonth, user.birthDay)} />
 
       <Card>
         <CardHeader>

@@ -5,7 +5,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "../src/db/index.js";
 import { menuDays, menuItems, users, bookings, payments, dayOrders, luckyEnvelopes } from "../src/db/schema.js";
-import { drawLuckyPercent, luckyDiscountVnd } from "../src/lib/lucky-envelope.js";
+import { drawLuckyPercent } from "../src/lib/lucky-envelope.js";
+import { discountVnd } from "../src/lib/day-discount.js";
+import { birthdayField, birthdayInYear, birthdaysBetween, isBirthdayOn } from "../src/lib/birthday.js";
 import { getMenuDay, getMenuDaysForDate } from "../src/db/queries/menu.js";
 import { cutoffOrderError, resolveActiveSlot } from "../src/lib/menu-slot.js";
 import { getUserBookingsForDay, getUserDailyTotals, getKitchenSummary, getDayBookingsByPerson, getUserTotalsForDates, getDayOrdersByPerson, syncDayOrder } from "../src/db/queries/bookings.js";
@@ -68,13 +70,13 @@ check("per-day line totals", aliceD3.map(l => l.lineTotalVnd), [120000, 55000]);
 
 const aliceTotals = await getUserDailyTotals(alice.id, D1, D3);
 check("daily totals (desc)", aliceTotals, [
-  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null },
-  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null },
-  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null },
+  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false },
+  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false },
+  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false },
 ]);
 
 const bobTotals = await getUserDailyTotals(bob.id, D1, D3);
-check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null }]);
+check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false }]);
 
 const kitchen = await getKitchenSummary(byDate.get(D3)!.id);
 check("kitchen headcount", kitchen.map(k => [k.itemName, k.totalQuantity]), [["Phở bò", 3], ["Cơm tấm", 1]]);
@@ -250,7 +252,7 @@ check("a diner's lines are scoped to one menu",
 // 60k + 200k food, plus both delivery fees — Alice is the only diner on each.
 const d5Totals = await getUserDailyTotals(alice.id, D5, D5);
 check("the date bills as one amount", d5Totals, [
-  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, luckyDiscountVnd: 0, luckyPercent: null },
+  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, discountVnd: 0, luckyPercent: null, birthday: false },
 ]);
 // The bug this guards: à-la-carte dishes are not an unfinished suất. A party
 // menu has no suất at all, so nothing on this date is "chưa đủ món".
@@ -309,13 +311,13 @@ for (let roll = 0; roll < 100; roll++) {
 check("odds are 65 / 30 / 5", tally, { 5: 65, 10: 30, 20: 5 });
 check("the boundaries land where the weights say",
   [0, 64, 65, 94, 95, 99].map(drawLuckyPercent), [5, 5, 10, 10, 20, 20]);
-check("the discount rounds down to the đồng", luckyDiscountVnd(99_999, 5), 4999);
-check("nothing owed, nothing taken", luckyDiscountVnd(0, 20), 0);
+check("the discount rounds down to the đồng", discountVnd(99_999, 5), 4999);
+check("nothing owed, nothing taken", discountVnd(0, 20), 0);
 
 await db.delete(luckyEnvelopes);
 const luckyAliceBefore = (await getUserTotalsForDates(alice.id, [D3])).get(D3)!;
 const luckyBobBefore = (await getUserTotalsForDates(bob.id, [D3])).get(D3)!;
-const luckyAliceAfter = luckyAliceBefore - luckyDiscountVnd(luckyAliceBefore, 10);
+const luckyAliceAfter = luckyAliceBefore - discountVnd(luckyAliceBefore, 10);
 
 const [firstOpen] = await db.insert(luckyEnvelopes)
   .values({ userId: alice.id, serviceDate: D3, percent: 10 })
@@ -336,7 +338,7 @@ check("only 5, 10 or 20 can be stored", badPercent, true);
 check("claim total is discounted", (await getUserTotalsForDates(alice.id, [D3])).get(D3), luckyAliceAfter);
 const luckyDay = (await getUserDailyTotals(alice.id, D3, D3))[0];
 check("bookings total is discounted, and says by how much",
-  [luckyDay.totalVnd, luckyDay.luckyPercent, luckyDay.luckyDiscountVnd],
+  [luckyDay.totalVnd, luckyDay.luckyPercent, luckyDay.discountVnd],
   [luckyAliceAfter, 10, luckyAliceBefore - luckyAliceAfter]);
 check("ledger owes the discounted amount",
   (await getUserLedger(alice.id, D3, D3)).map(e => [e.owedVnd, e.luckyPercent]), [[luckyAliceAfter, 10]]);
@@ -357,6 +359,64 @@ const [reopened] = await db.insert(luckyEnvelopes)
   .onConflictDoNothing({ target: luckyEnvelopes.userId }).returning();
 check("after a wipe the same person can open again", Boolean(reopened), true);
 await db.delete(luckyEnvelopes);
+
+console.log("\n── sinh nhật ──");
+check("a leap-day birthday is itself in a leap year", birthdayInYear({ month: 2, day: 29 }, 2028), "2028-02-29");
+check("…and 28 February otherwise", birthdayInYear({ month: 2, day: 29 }, 2027), "2027-02-28");
+check("any other birthday is its own date", isBirthdayOn({ month: 9, day: 16 }, D3), true);
+check("no birthday is never a birthday", isBirthdayOn(null, D3), false);
+check("a range across new year finds one per year",
+  birthdaysBetween({ month: 1, day: 2 }, "2026-12-01", "2027-01-31"), ["2027-01-02"]);
+check("a range spanning years finds each",
+  birthdaysBetween({ month: 6, day: 1 }, "2025-01-01", "2026-12-31"), ["2025-06-01", "2026-06-01"]);
+check("31 February is refused", birthdayField.safeParse({ month: 2, day: 31 }).success, false);
+check("29 February is accepted", birthdayField.safeParse({ month: 2, day: 29 }).success, true);
+
+let halfBirthday = false;
+try {
+  await db.update(users).set({ birthMonth: 9 }).where(eq(users.id, bob.id));
+} catch { halfBirthday = true; }
+check("a month without a day is refused", halfBirthday, true);
+let badMonth = false;
+try {
+  await db.update(users).set({ birthMonth: 13, birthDay: 1 }).where(eq(users.id, bob.id));
+} catch { badMonth = true; }
+check("month 13 is refused", badMonth, true);
+
+const bdayAliceBefore = (await getUserTotalsForDates(alice.id, [D3])).get(D3)!;
+const bdayBobBefore = (await getUserTotalsForDates(bob.id, [D3])).get(D3)!;
+const bdayAliceAfter = bdayAliceBefore - discountVnd(bdayAliceBefore, 10);
+await db.update(users).set({ birthMonth: 9, birthDay: 16 }).where(eq(users.id, alice.id));
+
+check("claim total is 10% off on the birthday", (await getUserTotalsForDates(alice.id, [D3])).get(D3), bdayAliceAfter);
+const bdayDay = (await getUserDailyTotals(alice.id, D3, D3))[0];
+check("bookings total says it is the birthday, and by how much",
+  [bdayDay.totalVnd, bdayDay.birthday, bdayDay.luckyPercent, bdayDay.discountVnd],
+  [bdayAliceAfter, true, null, bdayAliceBefore - bdayAliceAfter]);
+check("ledger owes the discounted amount",
+  (await getUserLedger(alice.id, D3, D3)).map(e => [e.owedVnd, e.birthday]), [[bdayAliceAfter, true]]);
+check("roster agrees",
+  (await getPaymentRoster(D3, D3)).rows.find(r => r.userId === alice.id)?.cells.get(D3)?.owedVnd, bdayAliceAfter);
+check("someone else's birthday is not yours",
+  (await getUserTotalsForDates(bob.id, [D3])).get(D3), bdayBobBefore);
+check("…and only on the day itself",
+  (await getUserDailyTotals(alice.id, D1, D1))[0]?.birthday ?? null, false);
+
+// A lì xì on the birthday adds to it: 20% + 10% = 30%, rounded once.
+await db.insert(luckyEnvelopes).values({ userId: alice.id, serviceDate: D3, percent: 20 });
+const stacked = bdayAliceBefore - discountVnd(bdayAliceBefore, 30);
+check("a lì xì on the birthday adds up", (await getUserTotalsForDates(alice.id, [D3])).get(D3), stacked);
+const stackedDay = (await getUserDailyTotals(alice.id, D3, D3))[0];
+check("…and both are named",
+  [stackedDay.totalVnd, stackedDay.luckyPercent, stackedDay.birthday], [stacked, 20, true]);
+check("roster agrees on the sum",
+  (await getPaymentRoster(D3, D3)).rows.find(r => r.userId === alice.id)?.cells.get(D3)?.owedVnd, stacked);
+await db.delete(luckyEnvelopes);
+
+// Cleared by the admin: full price again.
+await db.update(users).set({ birthMonth: null, birthDay: null }).where(eq(users.id, alice.id));
+check("a cleared birthday restores the full price",
+  (await getUserTotalsForDates(alice.id, [D3])).get(D3), bdayAliceBefore);
 
 console.log("\n── settings seed from env ──");
 const settings = await getAppSettings();
