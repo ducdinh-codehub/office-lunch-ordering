@@ -14,46 +14,53 @@ function sprite(rows: string[]): Sprite {
   return { width: Math.max(...rows.map((row) => row.length)), height: rows.length, cells };
 }
 
-/** A round little dino with a spiky back — the legs are added per frame below. */
+/**
+ * An upright pixel T-rex in the spirit of the browser's offline game, drawn
+ * our own way: a toothy jaw, a spiked back and a tail sweeping down. The
+ * legs are added per frame below.
+ */
 const DINO_BODY = [
-  "............#####...",
-  "...........#######..",
-  "...........##.#####.",
-  "....#.#.#..########.",
-  "...##########.......",
-  "..############......",
-  ".##############.....",
-  "###############.##..",
-  "#.#############.....",
-  "..#############.....",
-  "...###########......",
-  "....#########.......",
+  "...............#######..",
+  "..............##.#######",
+  "..............##########",
+  "..............####.#.#.#",
+  "..............######....",
+  ".......#.#.#.#####......",
+  "......##########........",
+  "....############.##.....",
+  "..##############........",
+  "###############.........",
+  "#..############.........",
+  "....##########..........",
 ];
 
-export const DINO_WIDTH = 20;
+export const DINO_WIDTH = 24;
 
-/** Front leg reaching, back leg pushing off. */
+/** Legs apart: the front one reaching, the back one pushing off. */
 export const DINO_RUN_A = sprite([
   ...DINO_BODY,
-  "....###..###........",
-  "...##.....##........",
-  "..##.......##.......",
+  "......###..##...........",
+  "......##....##..........",
+  ".....##......##.........",
+  ".....###.....###........",
 ]);
 
 /** Legs passing under the body. */
 export const DINO_RUN_B = sprite([
   ...DINO_BODY,
-  "....###..###........",
-  ".....##..##.........",
-  "......####..........",
+  "......###..##...........",
+  "......##...##...........",
+  ".......##.##............",
+  "......###.###...........",
 ]);
 
 /** Both feet on the ground — before the start and after the line. */
 export const DINO_STAND = sprite([
   ...DINO_BODY,
-  "....###..###........",
-  "....##...##.........",
-  "...###..###.........",
+  "......###..##...........",
+  "......##...##...........",
+  "......##...##...........",
+  "......###..###..........",
 ]);
 
 export const DINO_HEIGHT = DINO_STAND.height;

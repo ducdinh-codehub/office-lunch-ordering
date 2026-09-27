@@ -54,16 +54,23 @@ function tickOnly(roster: Entry[], wanted: (entry: Entry) => boolean): Entry[] {
 /**
  * The race: pick who runs, what they run as and for how long, then watch.
  * Everyone is listed — today's diners first — and today's diners start
- * ticked (or everyone, on a day fewer than two ordered). Guests are added
- * by name; the ticks are what decide who races.
+ * ticked (or everyone, on a day fewer than two ordered). Whoever has a
+ * birthday today is spared: left unticked, and skipped by the quick-select
+ * buttons, though a tick by hand still puts them in. Guests are added by
+ * name; the ticks are what decide who races.
  */
 export function DinoRace({
   todayDiners,
   members,
+  birthdays,
 }: {
   todayDiners: string[];
   members: string[];
+  /** Members whose birthday is today. */
+  birthdays: string[];
 }) {
+  const isBirthday = (name: string) => birthdays.some((other) => sameRunnerName(other, name));
+
   const [roster, setRoster] = useState<Entry[]>(() => {
     const entries: Entry[] = [];
     for (const name of [...todayDiners, ...members]) {
@@ -71,9 +78,13 @@ export function DinoRace({
         entries.push({ name, on: false, guest: false });
       }
     }
-    const fromToday = todayDiners.length >= RACE_MIN_RUNNERS;
-    return tickOnly(entries, (entry) =>
-      fromToday ? todayDiners.some((name) => sameRunnerName(name, entry.name)) : true,
+    const racingToday = todayDiners.filter((name) => !isBirthday(name));
+    const fromToday = racingToday.length >= RACE_MIN_RUNNERS;
+    return tickOnly(
+      entries,
+      (entry) =>
+        !isBirthday(entry.name) &&
+        (fromToday ? racingToday.some((name) => sameRunnerName(name, entry.name)) : true),
     );
   });
   const [kind, setKind] = useState<RacerKind>("dino");
@@ -220,12 +231,6 @@ export function DinoRace({
                   🏆
                 </p>
                 <p className="mt-1 text-xl font-semibold">{ranking[0]} thắng!</p>
-                <p className="text-muted-foreground text-sm">
-                  Về chót: <strong>{ranking[ranking.length - 1]}</strong>
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Chỉ để vui — kết quả không được lưu.
-                </p>
               </div>
               <ol className="divide-y rounded-lg border text-sm">
                 {ranking.map((name, place) => (
@@ -349,13 +354,22 @@ export function DinoRace({
               disabled={todayDiners.length === 0}
               onClick={() =>
                 setRoster(
-                  tickOnly(roster, (entry) => todayDiners.some((name) => sameRunnerName(name, entry.name))),
+                  tickOnly(
+                    roster,
+                    (entry) =>
+                      !isBirthday(entry.name) &&
+                      todayDiners.some((name) => sameRunnerName(name, entry.name)),
+                  ),
                 )
               }
             >
               Người đặt hôm nay ({todayDiners.length})
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setRoster(tickOnly(roster, () => true))}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRoster(tickOnly(roster, (entry) => !isBirthday(entry.name)))}
+            >
               Chọn hết
             </Button>
             <Button
@@ -392,6 +406,11 @@ export function DinoRace({
                         <span className="text-muted-foreground shrink-0 text-xs">· đặt hôm nay</span>
                       )}
                       {entry.guest && <span className="text-muted-foreground shrink-0 text-xs">· khách</span>}
+                      {isBirthday(entry.name) && (
+                        <span className="shrink-0 text-xs text-pink-600 dark:text-pink-400">
+                          · 🎂 sinh nhật, được miễn
+                        </span>
+                      )}
                     </Label>
                     {entry.guest ? (
                       <Button

@@ -1,9 +1,10 @@
 import { DinoRace } from "@/components/race/dino-race";
 import { getDayBookingsByPerson } from "@/db/queries/bookings";
 import { getMenuDaysForDate } from "@/db/queries/menu";
-import { getAllDiners } from "@/db/queries/users";
+import { getAllMembers } from "@/db/queries/users";
 import { pageTitle } from "@/lib/app-name";
 import { requireUser } from "@/lib/auth/session";
+import { isBirthdayOn, toBirthday } from "@/lib/birthday";
 import { todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
 
@@ -13,10 +14,12 @@ export const metadata = { title: pageTitle("Đua vui") };
 export default async function RacePage() {
   await requireUser();
 
-  const [menus, diners] = await Promise.all([
-    getMenuDaysForDate(todayServiceDate()),
-    getAllDiners(),
-  ]);
+  const today = todayServiceDate();
+  const [menus, people] = await Promise.all([getMenuDaysForDate(today), getAllMembers()]);
+  const members = people.map((person) => ({
+    name: person.displayName ?? fallbackDisplayName(person.email),
+    birthday: isBirthdayOn(toBirthday(person.birthMonth, person.birthDay), today),
+  }));
   // Everyone who ordered today, from either sitting, once each.
   const lines = (
     await Promise.all(
@@ -39,7 +42,11 @@ export default async function RacePage() {
         </p>
       </div>
 
-      <DinoRace todayDiners={todayDiners} members={diners.map((diner) => diner.name)} />
+      <DinoRace
+        todayDiners={todayDiners}
+        members={members.map((member) => member.name)}
+        birthdays={members.filter((member) => member.birthday).map((member) => member.name)}
+      />
     </div>
   );
 }
