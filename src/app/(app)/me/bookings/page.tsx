@@ -74,6 +74,12 @@ export default async function MyBookingsPage() {
                   {day.incompleteSet && (
                     <span className="text-amber-700 dark:text-amber-500"> · suất chưa đủ món</span>
                   )}
+                  {day.luckyPercent !== null && (
+                    <span className="text-red-700 dark:text-red-400">
+                      {" "}
+                      · 🧧 lì xì −{day.luckyPercent}%
+                    </span>
+                  )}
                 </p>
               </div>
               <span className="font-medium tabular-nums">{formatVnd(day.totalVnd)}</span>

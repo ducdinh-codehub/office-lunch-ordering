@@ -4,7 +4,8 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db/index.js";
-import { menuDays, menuItems, users, bookings, payments, dayOrders } from "../src/db/schema.js";
+import { menuDays, menuItems, users, bookings, payments, dayOrders, luckyEnvelopes } from "../src/db/schema.js";
+import { drawLuckyPercent, luckyDiscountVnd } from "../src/lib/lucky-envelope.js";
 import { getMenuDay, getMenuDaysForDate } from "../src/db/queries/menu.js";
 import { cutoffOrderError, resolveActiveSlot } from "../src/lib/menu-slot.js";
 import { getUserBookingsForDay, getUserDailyTotals, getKitchenSummary, getDayBookingsByPerson, getUserTotalsForDates, getDayOrdersByPerson, syncDayOrder } from "../src/db/queries/bookings.js";
@@ -67,13 +68,13 @@ check("per-day line totals", aliceD3.map(l => l.lineTotalVnd), [120000, 55000]);
 
 const aliceTotals = await getUserDailyTotals(alice.id, D1, D3);
 check("daily totals (desc)", aliceTotals, [
-  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0 },
-  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0 },
-  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0 },
+  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null },
+  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null },
+  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null },
 ]);
 
 const bobTotals = await getUserDailyTotals(bob.id, D1, D3);
-check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0 }]);
+check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, luckyDiscountVnd: 0, luckyPercent: null }]);
 
 const kitchen = await getKitchenSummary(byDate.get(D3)!.id);
 check("kitchen headcount", kitchen.map(k => [k.itemName, k.totalQuantity]), [["Phở bò", 3], ["Cơm tấm", 1]]);
@@ -249,7 +250,7 @@ check("a diner's lines are scoped to one menu",
 // 60k + 200k food, plus both delivery fees — Alice is the only diner on each.
 const d5Totals = await getUserDailyTotals(alice.id, D5, D5);
 check("the date bills as one amount", d5Totals, [
-  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000 },
+  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, luckyDiscountVnd: 0, luckyPercent: null },
 ]);
 // The bug this guards: à-la-carte dishes are not an unfinished suất. A party
 // menu has no suất at all, so nothing on this date is "chưa đủ món".
@@ -297,6 +298,65 @@ check("a party deadline equal to lunch is refused", ok(at("10:00"), at("10:00"))
 check("one minute later is enough", ok(at("10:00"), at("10:01")), true);
 check("no lunch deadline constrains nothing", ok(null, at("09:00")), true);
 check("no party deadline is not an early one", ok(at("10:00"), null), true);
+
+console.log("\n── lì xì may mắn ──");
+// The odds: a roll of 0–99 lands 65 / 30 / 5 on 5% / 10% / 20%.
+const tally: Record<number, number> = {};
+for (let roll = 0; roll < 100; roll++) {
+  const p = drawLuckyPercent(roll);
+  tally[p] = (tally[p] ?? 0) + 1;
+}
+check("odds are 65 / 30 / 5", tally, { 5: 65, 10: 30, 20: 5 });
+check("the boundaries land where the weights say",
+  [0, 64, 65, 94, 95, 99].map(drawLuckyPercent), [5, 5, 10, 10, 20, 20]);
+check("the discount rounds down to the đồng", luckyDiscountVnd(99_999, 5), 4999);
+check("nothing owed, nothing taken", luckyDiscountVnd(0, 20), 0);
+
+await db.delete(luckyEnvelopes);
+const luckyAliceBefore = (await getUserTotalsForDates(alice.id, [D3])).get(D3)!;
+const luckyBobBefore = (await getUserTotalsForDates(bob.id, [D3])).get(D3)!;
+const luckyAliceAfter = luckyAliceBefore - luckyDiscountVnd(luckyAliceBefore, 10);
+
+const [firstOpen] = await db.insert(luckyEnvelopes)
+  .values({ userId: alice.id, serviceDate: D3, percent: 10 })
+  .onConflictDoNothing({ target: luckyEnvelopes.userId }).returning();
+check("the first envelope opens", Boolean(firstOpen), true);
+const secondOpen = await db.insert(luckyEnvelopes)
+  .values({ userId: alice.id, serviceDate: D1, percent: 20 })
+  .onConflictDoNothing({ target: luckyEnvelopes.userId }).returning();
+check("a second envelope for the same person is refused", secondOpen.length, 0);
+
+let badPercent = false;
+try {
+  await db.insert(luckyEnvelopes).values({ userId: bob.id, serviceDate: D3, percent: 7 });
+} catch { badPercent = true; }
+check("only 5, 10 or 20 can be stored", badPercent, true);
+
+// Every total agrees on the discounted amount.
+check("claim total is discounted", (await getUserTotalsForDates(alice.id, [D3])).get(D3), luckyAliceAfter);
+const luckyDay = (await getUserDailyTotals(alice.id, D3, D3))[0];
+check("bookings total is discounted, and says by how much",
+  [luckyDay.totalVnd, luckyDay.luckyPercent, luckyDay.luckyDiscountVnd],
+  [luckyAliceAfter, 10, luckyAliceBefore - luckyAliceAfter]);
+check("ledger owes the discounted amount",
+  (await getUserLedger(alice.id, D3, D3)).map(e => [e.owedVnd, e.luckyPercent]), [[luckyAliceAfter, 10]]);
+const luckyRoster = await getPaymentRoster(D3, D3);
+check("roster agrees",
+  luckyRoster.rows.find(r => r.userId === alice.id)?.cells.get(D3)?.owedVnd, luckyAliceAfter);
+check("only the opener's day is discounted",
+  (await getUserTotalsForDates(bob.id, [D3])).get(D3), luckyBobBefore);
+check("…and only on the day it was opened",
+  (await getUserDailyTotals(alice.id, D1, D1))[0]?.luckyPercent ?? null, null);
+
+// Turning the feature off / resetting deletes every envelope: full price again.
+await db.delete(luckyEnvelopes);
+check("a wiped envelope restores the full price",
+  (await getUserTotalsForDates(alice.id, [D3])).get(D3), luckyAliceBefore);
+const [reopened] = await db.insert(luckyEnvelopes)
+  .values({ userId: alice.id, serviceDate: D3, percent: 5 })
+  .onConflictDoNothing({ target: luckyEnvelopes.userId }).returning();
+check("after a wipe the same person can open again", Boolean(reopened), true);
+await db.delete(luckyEnvelopes);
 
 console.log("\n── settings seed from env ──");
 const settings = await getAppSettings();

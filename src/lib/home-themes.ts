@@ -16,6 +16,25 @@ export const HOME_THEMES = [
     description: "Trăng rằm, đèn lồng bay, đèn ông sao và bánh trung thu.",
     preview: "🥮",
   },
+  {
+    id: "cozy-winter",
+    label: "Đông ấm áp",
+    description:
+      "Tông xanh băng giá: gió mùa đông bắc thổi lá bay, đèn dây lấp lánh, cacao nóng và món ăn.",
+    preview: "☕",
+  },
+  {
+    id: "halloween",
+    label: "Halloween",
+    description: "Trăng tím, dơi bay, ma bay lượn, nhện giăng tơ và bí ngô phát sáng.",
+    preview: "🎃",
+  },
+  {
+    id: "lunar-new-year",
+    label: "Tết Nguyên Đán",
+    description: "Đèn lồng đỏ, hoa mai hoa đào rơi, pháo hoa, lì xì và bánh chưng.",
+    preview: "🧧",
+  },
 ] as const;
 
 export type HomeThemeId = (typeof HOME_THEMES)[number]["id"];

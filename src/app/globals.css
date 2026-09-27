@@ -372,3 +372,565 @@
     transform: translateY(var(--rest-y));
   }
 }
+
+/* ── Food layer (any seasonal backdrop) ────────────────────────────────────
+   The FoodLayer component: drawn dishes and emoji rising up the screen. */
+
+/* The drawn dishes: a touch stronger than the emoji, since they are
+   paler and finer-lined. `color` is what their steam is drawn in. */
+.food-dish {
+  opacity: 0.4;
+  color: rgb(148 163 184 / 0.8);
+}
+.dark .food-dish {
+  opacity: 0.45;
+  color: rgb(255 255 255 / 0.6);
+}
+
+/* The fade lives in the keyframes, so how faint the food is at full
+   visibility is set on the emoji inside, in the markup. */
+.food-float {
+  animation: food-float var(--float-duration) linear infinite;
+  animation-delay: var(--float-delay);
+}
+
+.food-sway {
+  animation: winter-sway 5s ease-in-out infinite;
+}
+
+/* Scoped to no backdrop, so it holds wherever the layer is drawn. */
+@media (prefers-reduced-motion: reduce) {
+  .food-float,
+  .food-sway,
+  .food-dish {
+    animation: none !important;
+  }
+  .food-float {
+    transform: translateY(var(--rest-y));
+  }
+}
+
+/* ── Cozy winter backdrop (home page) ──────────────────────────────────────
+   Gusts of wind sweep across and carry dry leaves with them, the
+   fairy lights breathe out of step with each other, steam curls off the mug.
+   Faint and slow, like the Trung Thu one: it sits behind the menu. */
+.winter-bulb {
+  width: 9px;
+  height: 13px;
+  translate: -50% 0;
+  border-radius: 45% 45% 50% 50% / 35% 35% 65% 65%;
+  background: var(--bulb);
+  box-shadow:
+    0 0 8px 2px color-mix(in srgb, var(--bulb) 70%, transparent),
+    0 0 22px 6px color-mix(in srgb, var(--bulb) 30%, transparent);
+  animation: winter-glow 3s ease-in-out infinite;
+}
+/* The little socket each bulb hangs from. */
+.winter-bulb::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 5px;
+  height: 4px;
+  translate: -50% 0;
+  border-radius: 1px;
+  background: rgb(87 83 78 / 0.7);
+}
+
+.winter-gust {
+  opacity: 0;
+  animation: winter-gust var(--gust-duration) ease-in-out infinite;
+  animation-delay: var(--gust-delay);
+}
+
+.winter-leaf {
+  opacity: 0;
+  animation: winter-leaf var(--leaf-duration) linear infinite;
+  animation-delay: var(--leaf-delay);
+}
+
+.winter-mug {
+  color: rgb(168 162 158 / 0.8);
+  opacity: 0.55;
+  filter: drop-shadow(0 6px 14px rgb(37 99 235 / 0.3));
+}
+.dark .winter-mug {
+  color: rgb(255 255 255 / 0.55);
+  opacity: 0.6;
+}
+
+
+.winter-steam {
+  stroke-dasharray: 60;
+  animation: winter-steam 4s ease-in-out infinite;
+}
+
+@keyframes winter-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+/* Sweeps across in the first half of the cycle, rests unseen for the second —
+   so the wind gusts, rather than streams. */
+@keyframes winter-gust {
+  0% {
+    transform: translateX(-30rem);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 0.8;
+  }
+  55%,
+  100% {
+    transform: translateX(110vw);
+    opacity: 0;
+  }
+}
+
+@keyframes winter-leaf {
+  0% {
+    transform: translate(-2rem, 0) rotate(0deg);
+    opacity: 0;
+  }
+  5% {
+    opacity: 0.7;
+  }
+  25% {
+    transform: translate(24vw, 28px) rotate(200deg);
+  }
+  50% {
+    transform: translate(50vw, -12px) rotate(390deg);
+  }
+  75% {
+    transform: translate(76vw, 36px) rotate(560deg);
+  }
+  95% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(106vw, 16px) rotate(740deg);
+    opacity: 0;
+  }
+}
+
+/* Only the food layer's sway uses this now; the name stayed with it. */
+@keyframes winter-sway {
+  0%,
+  100% {
+    transform: translateX(-14px) rotate(-20deg);
+  }
+  50% {
+    transform: translateX(14px) rotate(20deg);
+  }
+}
+
+@keyframes food-float {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(-100vh - 6rem));
+    opacity: 0;
+  }
+}
+
+@keyframes winter-steam {
+  0% {
+    stroke-dashoffset: 60;
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    stroke-dashoffset: -60;
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* Still, not gone: gusts and leaves hold mid-screen, the lights stay lit. */
+@media (prefers-reduced-motion: reduce) {
+  .winter-backdrop,
+  .winter-backdrop * {
+    animation: none !important;
+  }
+  .winter-gust,
+  .winter-leaf {
+    opacity: 0.5;
+    transform: translateX(var(--rest-x));
+  }
+  .winter-steam {
+    opacity: 0.6;
+    stroke-dasharray: none;
+  }
+}
+
+/* ── Halloween backdrop (home page) ────────────────────────────────────────
+   Bats cross the screen on a wavering line, flapping; ghosts wobble upward;
+   the spider bobs on its thread; the lanterns' faces flicker. */
+.halloween-moon {
+  background: radial-gradient(circle at 40% 38%, #fffbeb 0%, #fed7aa 55%, #fb923c 100%);
+  box-shadow:
+    0 0 50px 16px rgb(251 146 60 / 0.35),
+    0 0 120px 50px rgb(251 191 36 / 0.15);
+  opacity: 0.8;
+}
+
+.halloween-bat {
+  animation: halloween-fly var(--bat-duration) linear infinite;
+  animation-delay: var(--bat-delay);
+}
+
+.halloween-flap {
+  transform-origin: 50% 70%;
+  /* Unhurried, to match the slow crossing. */
+  animation: halloween-flap 0.6s ease-in-out infinite alternate;
+}
+
+.halloween-rise {
+  animation: halloween-rise var(--rise-duration) linear infinite;
+  animation-delay: var(--rise-delay);
+}
+
+.halloween-wobble {
+  /* Slow, to match the drift upward. */
+  animation: halloween-wobble 6s ease-in-out infinite;
+}
+
+.halloween-spider {
+  animation: halloween-bob 5s ease-in-out infinite;
+}
+
+.halloween-pumpkin {
+  opacity: 0.75;
+  filter: drop-shadow(0 0 14px rgb(251 146 60 / 0.55));
+}
+
+.halloween-flicker {
+  animation: halloween-flicker 2.4s linear infinite;
+}
+
+@keyframes halloween-fly {
+  0% {
+    transform: translate(-12vw, 0);
+  }
+  25% {
+    transform: translate(18vw, -24px);
+  }
+  50% {
+    transform: translate(48vw, 12px);
+  }
+  75% {
+    transform: translate(78vw, -18px);
+  }
+  100% {
+    transform: translate(112vw, 0);
+  }
+}
+
+@keyframes halloween-flap {
+  from {
+    transform: scaleY(1);
+  }
+  to {
+    transform: scaleY(0.35);
+  }
+}
+
+@keyframes halloween-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(calc(-100vh - 10rem));
+    opacity: 0;
+  }
+}
+
+@keyframes halloween-wobble {
+  0%,
+  100% {
+    transform: translateX(-12px) rotate(-6deg);
+  }
+  50% {
+    transform: translateX(12px) rotate(6deg);
+  }
+}
+
+@keyframes halloween-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(28px);
+  }
+}
+
+@keyframes halloween-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  42% {
+    opacity: 0.95;
+  }
+  45% {
+    opacity: 0.55;
+  }
+  48% {
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.75;
+  }
+}
+
+/* Still, not gone: ghosts hang part-way up, bats wait at the edge. */
+@media (prefers-reduced-motion: reduce) {
+  .halloween-backdrop,
+  .halloween-backdrop * {
+    animation: none !important;
+  }
+  .halloween-rise {
+    opacity: 0.55;
+    transform: translateY(var(--rest-y));
+  }
+  .halloween-bat {
+    display: none;
+  }
+}
+
+/* ── Tết Nguyên Đán backdrop (home page) ───────────────────────────────────
+   Lanterns swing from their strings, mai and đào petals tumble down,
+   fireworks bloom and fade on staggered beats, lì xì drift upward. */
+.tet-swing {
+  transform-origin: 50% 0;
+  opacity: 0.85;
+  filter: drop-shadow(0 4px 12px rgb(220 38 38 / 0.35));
+  animation: tet-swing 4.5s ease-in-out infinite;
+}
+
+.tet-fall {
+  opacity: 0.8;
+  animation: tet-fall var(--fall-duration) linear infinite;
+  animation-delay: var(--fall-delay);
+}
+
+.tet-spin {
+  animation: tet-spin 6s ease-in-out infinite;
+}
+
+.tet-burst {
+  opacity: 0;
+  animation: tet-burst 6.5s ease-out infinite;
+}
+
+.tet-rise {
+  animation: tet-rise var(--rise-duration) linear infinite;
+  animation-delay: var(--rise-delay);
+}
+
+.tet-sway {
+  animation: tet-sway 4s ease-in-out infinite;
+}
+
+.tet-branch {
+  opacity: 0.6;
+}
+.dark .tet-branch {
+  opacity: 0.5;
+}
+
+@keyframes tet-swing {
+  0%,
+  100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes tet-fall {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(100vh + 4rem));
+  }
+}
+
+@keyframes tet-spin {
+  0%,
+  100% {
+    transform: translateX(-16px) rotate(0deg);
+  }
+  50% {
+    transform: translateX(16px) rotate(200deg);
+  }
+}
+
+@keyframes tet-burst {
+  0% {
+    transform: scale(0.15);
+    opacity: 0;
+  }
+  6% {
+    opacity: 0.9;
+  }
+  30% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  46%,
+  100% {
+    transform: scale(1.12);
+    opacity: 0;
+  }
+}
+
+@keyframes tet-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(calc(-100vh - 6rem));
+    opacity: 0;
+  }
+}
+
+@keyframes tet-sway {
+  0%,
+  100% {
+    transform: translateX(-10px) rotate(-10deg);
+  }
+  50% {
+    transform: translateX(10px) rotate(10deg);
+  }
+}
+
+/* Still, not gone: petals and envelopes hang mid-air, fireworks stay lit. */
+@media (prefers-reduced-motion: reduce) {
+  .tet-backdrop,
+  .tet-backdrop * {
+    animation: none !important;
+  }
+  .tet-fall,
+  .tet-rise {
+    transform: translateY(var(--rest-y));
+  }
+  .tet-rise {
+    opacity: 1;
+  }
+  .tet-burst {
+    opacity: 0.35;
+  }
+}
+
+/* ── Lì xì may mắn ─────────────────────────────────────────────────────────
+   The envelope wobbles to invite a tap, shakes while the server draws, and
+   throws gold sparks when it opens. The put-away pill bobs gently. */
+.lixi-wiggle {
+  animation: lixi-wiggle 2.6s ease-in-out infinite;
+}
+
+.lixi-shake {
+  animation: lixi-shake 0.35s ease-in-out infinite;
+}
+
+.lixi-spark {
+  opacity: 0;
+  animation: lixi-spark 0.9s ease-out forwards;
+}
+
+.lixi-pill {
+  animation: lixi-bob 2.4s ease-in-out infinite;
+}
+
+@keyframes lixi-wiggle {
+  0%,
+  70%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  76% {
+    transform: rotate(-4deg) scale(1.02);
+  }
+  84% {
+    transform: rotate(4deg) scale(1.02);
+  }
+  92% {
+    transform: rotate(-2deg) scale(1.01);
+  }
+}
+
+@keyframes lixi-shake {
+  0%,
+  100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+@keyframes lixi-spark {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) scale(0.4);
+  }
+}
+
+@keyframes lixi-bob {
+  0%,
+  100% {
+    translate: -50% 0;
+  }
+  50% {
+    translate: -50% -4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lixi-wiggle,
+  .lixi-shake,
+  .lixi-pill {
+    animation: none;
+  }
+  .lixi-spark {
+    display: none;
+  }
+}

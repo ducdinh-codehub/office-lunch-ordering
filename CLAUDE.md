@@ -150,6 +150,17 @@ bug, not a style issue.
 - **Amounts are recomputed server-side on every write.** `claimPayment` and
   `markPaidByAdmin` both call `getUserTotalsForDates()`; a total sent from the
   client is display-only and is never persisted.
+- **A lì xì discounts one whole day, once per person per round.**
+  `lucky_envelopes` holds one row per user — the unique `user_id` *is* the
+  "only once" rule — with the date it was opened and 5, 10 or 20 (a check
+  constraint). The prize is drawn server-side (`crypto.randomInt`, odds in
+  `src/lib/lucky-envelope.ts`), and `luckyDiscountVnd()` is the only place the
+  discount is computed: `getUserDailyTotals`, `getUserTotalsForDates`, the
+  roster and the bill export all apply it to the *finished* day total (food,
+  suất, ship). The quán's bill is untouched — the admin pays for it. Turning
+  the feature off or resetting deletes every row: unpaid days go back to full
+  price, a claimed day keeps the amount on its `payments` row. Opening is
+  refused on a day already claimed, whose amount is fixed.
 - **Money is integer VND.** No floats, no decimals, anywhere. Booking quantity is
   capped at 99 for that reason alone — `quantity × unit_price_vnd` has to stay
   inside a 32-bit integer. It is not a product limit on how much someone may eat.

@@ -155,6 +155,11 @@ export function SettleUp({
                   onCheckedChange={() => toggle(entry.serviceDate)}
                 />
                 <span className="flex-1 text-sm">{formatServiceDate(entry.serviceDate)}</span>
+                {entry.luckyPercent !== null && (
+                  <Badge variant="outline" className="border-red-200 text-xs text-red-700">
+                    🧧 −{entry.luckyPercent}%
+                  </Badge>
+                )}
                 {entry.state === "rejected" && (
                   <Badge variant="destructive" className="text-xs">
                     Kiểm tra lại
