@@ -269,6 +269,19 @@ export const appSettings = pgTable("app_settings", {
    */
   qrImageData: text("qr_image_data"),
   qrImageType: text("qr_image_type"),
+  /**
+   * The seasonal backdrop behind the diner pages — an id from `HOME_THEMES`
+   * (`src/lib/home-themes.ts`), or "none". Text rather than a pg enum so a new
+   * theme is a code change, not a migration; an id the code no longer knows
+   * renders as "none".
+   */
+  homeTheme: text("home_theme").notNull().default("none"),
+  /**
+   * The admin's wish shown in a banner on the home page — "" means no banner.
+   * Dismissal is per browser and keyed on the text itself, so editing the
+   * wish brings the banner back for everyone who closed the old one.
+   */
+  greetingMessage: text("greeting_message").notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

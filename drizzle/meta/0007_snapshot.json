@@ -1,6 +1,6 @@
 {
-  "id": "797f58c9-4ad2-4e8e-a6bd-0bac1ab16680",
-  "prevId": "e682faa4-19e1-40e9-8148-d843517189f8",
+  "id": "138652fd-db32-4d20-b620-fa5d2705ee97",
+  "prevId": "52caa248-d1dc-4d55-b6b1-a2e417a0fbda",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -68,6 +68,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'none'"
+        },
+        "greeting_message": {
+          "name": "greeting_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "updated_at": {
           "name": "updated_at",
@@ -379,6 +386,14 @@
           "primaryKey": false,
           "notNull": true
         },
+        "slot": {
+          "name": "slot",
+          "type": "menu_slot",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'lunch'"
+        },
         "status": {
           "name": "status",
           "type": "menu_day_status",
@@ -476,15 +491,32 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "menu_days_date_idx": {
+          "name": "menu_days_date_idx",
+          "columns": [
+            {
+              "expression": "service_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "menu_days_service_date_unique": {
-          "name": "menu_days_service_date_unique",
+        "menu_days_date_slot_unique": {
+          "name": "menu_days_date_slot_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "service_date"
+            "service_date",
+            "slot"
           ]
         }
       },
@@ -853,6 +885,14 @@
         "veg",
         "addon",
         "drink"
+      ]
+    },
+    "public.menu_slot": {
+      "name": "menu_slot",
+      "schema": "public",
+      "values": [
+        "lunch",
+        "afternoon"
       ]
     },
     "public.payment_status": {

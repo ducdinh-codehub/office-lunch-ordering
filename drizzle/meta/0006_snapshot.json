@@ -1,6 +1,6 @@
 {
-  "id": "797f58c9-4ad2-4e8e-a6bd-0bac1ab16680",
-  "prevId": "e682faa4-19e1-40e9-8148-d843517189f8",
+  "id": "52caa248-d1dc-4d55-b6b1-a2e417a0fbda",
+  "prevId": "797f58c9-4ad2-4e8e-a6bd-0bac1ab16680",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -68,6 +68,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'none'"
+        },
+        "greeting_message": {
+          "name": "greeting_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
         },
         "updated_at": {
           "name": "updated_at",

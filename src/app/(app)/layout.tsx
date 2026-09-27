@@ -1,3 +1,4 @@
+import { GymTimePromoDialog } from "@/components/gym-time-promo-dialog";
 import { AppShell } from "@/components/layout/app-shell";
 import { getAppSettings } from "@/db/queries/settings";
 import { requireUser } from "@/lib/auth/session";
@@ -41,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppShell user={user} donate={donate}>
       {children}
+      <GymTimePromoDialog />
     </AppShell>
   );
 }

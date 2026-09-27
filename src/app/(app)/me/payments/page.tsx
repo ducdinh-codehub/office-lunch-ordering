@@ -1,4 +1,5 @@
 import { SettleUp } from "@/components/payments/settle-up";
+import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
 import { getUserLedger } from "@/db/queries/payments";
 import { getAppSettings } from "@/db/queries/settings";
 import { requireUser } from "@/lib/auth/session";
@@ -41,7 +42,8 @@ export default async function MyPaymentsPage() {
   const memoBase = buildTransferMemo({ email: user.email, displayName: user.displayName });
 
   return (
-    <div className="space-y-5">
+    <div className="relative isolate space-y-5">
+      <SeasonalBackdrop />
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Thanh toán</h1>
         <p className="text-muted-foreground text-sm">

@@ -10,6 +10,8 @@ import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
 import { displayNameField } from "@/lib/display-name";
+import { GREETING_MAX_LENGTH } from "@/lib/greeting";
+import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 
 const settingsSchema = z.object({
@@ -125,6 +127,76 @@ export async function updateAppSettings(input: unknown): Promise<ActionResult> {
       return { ok: false, error: cause.issues[0]?.message ?? "Thông tin nhập vào có vẻ chưa đúng." };
     }
     return toActionError(cause, "Không lưu được cài đặt.");
+  }
+}
+
+const homeThemeSchema = z.object({
+  homeTheme: z.enum(HOME_THEME_SETTINGS),
+});
+
+/** Switches the seasonal backdrop on the diner pages, or turns it off. */
+export async function updateHomeTheme(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { homeTheme } = homeThemeSchema.parse(input);
+
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, homeTheme, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: appSettings.id,
+        set: { homeTheme, updatedAt: new Date() },
+      });
+
+    // Every page that draws the backdrop — see <SeasonalBackdrop />.
+    revalidatePath("/");
+    revalidatePath("/me/bookings");
+    revalidatePath("/me/payments");
+    revalidatePath("/admin/settings");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: "Giao diện này không tồn tại." };
+    }
+    return toActionError(cause, "Không đổi được giao diện.");
+  }
+}
+
+const greetingSchema = z.object({
+  greetingMessage: z
+    .string()
+    .trim()
+    .max(GREETING_MAX_LENGTH, `Lời chúc tối đa ${GREETING_MAX_LENGTH} ký tự.`),
+});
+
+/** Sets the home-page wish; an empty string takes the banner down. */
+export async function updateGreeting(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { greetingMessage } = greetingSchema.parse(input);
+
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, greetingMessage, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: appSettings.id,
+        set: { greetingMessage, updatedAt: new Date() },
+      });
+
+    revalidatePath("/");
+    revalidatePath("/admin/settings");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Lời chúc không hợp lệ." };
+    }
+    return toActionError(cause, "Không lưu được lời chúc.");
   }
 }
 
