@@ -36,12 +36,18 @@ export function SetTierBadges({
   menuDayId,
   canBook,
   onBehalfOf,
+  param = "suat",
 }: {
   tiers: TierChoice[];
   activeKey: SetTierKey | null;
   menuDayId: string;
   canBook: boolean;
   onBehalfOf?: string;
+  /**
+   * The query parameter the choice is written to. Two menus on one page need
+   * one each, or choosing a suất on one would move the other.
+   */
+  param?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -54,7 +60,7 @@ export function SetTierBadges({
     // Keep whatever else is in the URL — the admin ordering for someone else is
     // identified by `for`, and losing it would drop them back to their own menu.
     const next = new URLSearchParams(searchParams.toString());
-    next.set("suat", key);
+    next.set(param, key);
     return `${pathname}?${next.toString()}`;
   };
 

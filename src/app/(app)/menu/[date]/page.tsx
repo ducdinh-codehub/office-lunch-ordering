@@ -6,6 +6,7 @@ import { MenuDayView } from "@/components/menu/menu-day-view";
 import { SlotTabs, type SlotTab } from "@/components/menu/slot-tabs";
 import { CloseButton } from "@/components/layout/close-button";
 import { getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
+import { getUserBookingsForDay } from "@/db/queries/bookings";
 import { requireUser } from "@/lib/auth/session";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import {
@@ -28,18 +29,38 @@ export default async function MenuDatePage({
   searchParams,
 }: {
   params: Promise<{ date: string }>;
-  searchParams: Promise<{ suat?: string; buoi?: string }>;
+  searchParams: Promise<{ suat?: string; buoi?: string; xem?: string }>;
 }) {
-  const [{ date }, { suat, buoi }] = await Promise.all([params, searchParams]);
+  const [{ date }, { suat, buoi, xem }] = await Promise.all([params, searchParams]);
   if (!isServiceDate(date)) notFound();
 
   const user = await requireUser();
   const allDays = await getMenuDaysForDate(date);
 
+  // `?xem=don` is how Đơn của tôi opens a day: to look at an order, not to
+  // browse the menu. A sitting you ordered nothing from is not part of your
+  // order, so only the ones you did get a tab.
+  const orderView = xem === "don";
+  const orderedSlots = orderView
+    ? (
+        await Promise.all(
+          allDays.map(async (existing) =>
+            (await getUserBookingsForDay(user.id, existing.id)).length > 0 ? existing.slot : null,
+          ),
+        )
+      ).filter((ordered) => ordered !== null)
+    : [];
+
   // An explicit `?buoi=` wins — that is someone asking for a specific sitting,
   // including a locked lunch they want to look back at. With no parameter the
-  // date decides for itself, so a locked lunch hands the day to the party.
-  const slot = parseMenuSlotParam(buoi) ?? resolveActiveSlot(allDays);
+  // date decides for itself, so a locked lunch hands the day to the party —
+  // unless this is the order view, which opens on a sitting you ordered from.
+  const slot =
+    parseMenuSlotParam(buoi) ??
+    (orderView
+      ? (MENU_SLOTS.find((candidate) => orderedSlots.includes(candidate)) ?? null)
+      : null) ??
+    resolveActiveSlot(allDays);
   const day = await getMenuDay(date, slot);
 
   // Drafts are admin-only; to everyone else the day simply has no menu.
@@ -48,16 +69,23 @@ export default async function MenuDatePage({
   // A tab per sitting this date actually sells. Drafts count only for the
   // admin, so nobody else is offered a tab that leads to an empty card. With
   // lunch alone SlotTabs renders nothing.
+  // In the order view, only the sittings you ordered from — plus the one on
+  // screen, so emptying it does not leave you on a page with no tab for it.
   const tabs: SlotTab[] = MENU_SLOTS.filter((candidate) =>
     allDays.some(
       (existing) =>
         existing.slot === candidate && (existing.status !== "draft" || user.isAdmin),
     ),
-  ).map((candidate) => ({
-    slot: candidate,
-    href: withSlot(`/menu/${date}`, candidate),
-    exists: true,
-  }));
+  )
+    .filter((candidate) => !orderView || candidate === slot || orderedSlots.includes(candidate))
+    .map((candidate) => ({
+      slot: candidate,
+      // Always explicit, lunch included. `withSlot` drops `buoi=lunch`, and a bare
+      // link defers to `resolveActiveSlot` — which, once lunch is locked, sends
+      // the Bữa trưa tab straight back to the party.
+      href: `/menu/${date}?buoi=${candidate}${orderView ? "&xem=don" : ""}`,
+      exists: true,
+    }));
 
   const previous = shiftServiceDate(date, -1);
   const next = shiftServiceDate(date, 1);

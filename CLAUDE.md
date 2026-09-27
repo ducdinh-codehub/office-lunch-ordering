@@ -183,10 +183,15 @@ re-deriving that.
 
 `SlotTabs` switches between a date's two sittings. Diners only see it once an
 afternoon menu is published; the admin always sees both, because tapping the
-absent one is how a party menu gets created. `MenuDayView` renders one sitting
-at a time — two on a page would share the single `suat` parameter, so choosing
-a suất on one would move the other, which is why the home page links to the
-afternoon menu rather than stacking a second card.
+absent one is how a party menu gets created. Đơn của tôi opens a day with
+`?xem=don`, which narrows the tabs to the sittings the diner ordered from, so a
+party they skipped is not part of their order. Diner tab links always name
+their `buoi`, lunch included: a bare link defers to `resolveActiveSlot()`, which
+sends a locked lunch's tab straight back to the party. Two `MenuDayView`s on one page
+must not share the `suat` parameter, or choosing a suất on one would move the
+other: when today has a published party, the home page shows both sittings as
+folding `SlotSection`s — a locked one starts folded, neither is dropped — and
+the party gets `tierParam="suatChieu"`.
 
 `MenuEditor` carries the combo / per-dish tabs. Per-dish mode hides every suất
 field, drops the category picker entirely (one bucket, `addon`, relabelled "Món

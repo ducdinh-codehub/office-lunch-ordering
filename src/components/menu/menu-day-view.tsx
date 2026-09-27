@@ -40,6 +40,7 @@ export async function MenuDayView({
   userId,
   onBehalfOf,
   selectedTier = null,
+  tierParam,
 }: {
   serviceDate: ServiceDate;
   /**
@@ -61,6 +62,11 @@ export async function MenuDayView({
    * their picks happen to match.
    */
   selectedTier?: SetTierKey | null;
+  /**
+   * The query parameter `selectedTier` was read from, when it is not `suat` —
+   * set when a second menu shares the page, so each keeps its own choice.
+   */
+  tierParam?: string;
 }) {
   // Everything below is scoped to this one menu. A date can hold a lunch and an
   // afternoon party, and each card shows only its own dishes, suất and ship fee.
@@ -160,6 +166,7 @@ export async function MenuDayView({
                 menuDayId={day.id}
                 canBook={canBook}
                 onBehalfOf={onBehalfOf}
+                param={tierParam}
               />
             )}
             {day.shipFeeVnd > 0 && (

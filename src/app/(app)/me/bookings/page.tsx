@@ -50,7 +50,9 @@ export default async function MyBookingsPage() {
           {days.map((day) => (
             <Link
               key={day.serviceDate}
-              href={`/menu/${day.serviceDate}`}
+              // `xem=don` opens the day as your order: only the sittings you
+              // ordered from get a tab, so an untouched party stays out of it.
+              href={`/menu/${day.serviceDate}?xem=don`}
               className="bg-background hover:bg-accent flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors"
             >
               <div className="min-w-0 flex-1">
