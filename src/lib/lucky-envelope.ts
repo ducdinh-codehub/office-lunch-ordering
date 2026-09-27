@@ -2,8 +2,8 @@
  * Lì xì may mắn — the rules, with no database in sight so both the server and
  * the envelope on screen can import them.
  *
- * An envelope is opened once per person (per round: turning the feature off,
- * or the admin's reset, wipes every envelope) and takes a percentage off that
+ * An envelope is opened once per person (per round: only the admin's reset
+ * wipes every envelope — turning the feature off keeps them) and takes a percentage off that
  * person's whole bill for the day they opened it — food, suất and ship. The
  * quán's bill is untouched; the discount is the admin's gift.
  */

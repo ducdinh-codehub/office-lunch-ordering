@@ -15,8 +15,8 @@ export function envelopeKey(userId: string, serviceDate: ServiceDate): string {
  * The envelope discounts that fall in a date range or on a set of dates, as
  * `envelopeKey` → percent. Optionally for one person only.
  *
- * Deliberately not gated on the feature switch: turning it off deletes the
- * rows, so what is left is exactly what should still count.
+ * Deliberately not gated on the feature switch: turning it off keeps the
+ * rows, and a discount already won still counts. Only a reset takes it back.
  */
 export async function getEnvelopePercents(
   where: ({ from: ServiceDate; to: ServiceDate } | { dates: ServiceDate[] }) & {

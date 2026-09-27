@@ -348,7 +348,7 @@ check("only the opener's day is discounted",
 check("…and only on the day it was opened",
   (await getUserDailyTotals(alice.id, D1, D1))[0]?.luckyPercent ?? null, null);
 
-// Turning the feature off / resetting deletes every envelope: full price again.
+// Resetting deletes every envelope: full price again.
 await db.delete(luckyEnvelopes);
 check("a wiped envelope restores the full price",
   (await getUserTotalsForDates(alice.id, [D3])).get(D3), luckyAliceBefore);

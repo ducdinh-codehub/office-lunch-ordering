@@ -158,8 +158,10 @@ bug, not a style issue.
   discount is computed: `getUserDailyTotals`, `getUserTotalsForDates`, the
   roster and the bill export all apply it to the *finished* day total (food,
   suất, ship). The quán's bill is untouched — the admin pays for it. Turning
-  the feature off or resetting deletes every row: unpaid days go back to full
-  price, a claimed day keeps the amount on its `payments` row. Opening is
+  the feature off only hides the unopened envelope; opened ones keep their
+  discount and turning it on again resumes the round. Resetting is what deletes
+  every row: unpaid days go back to full price, a claimed day keeps the amount
+  on its `payments` row. Opening is
   refused on a day already claimed, whose amount is fixed.
 - **Money is integer VND.** No floats, no decimals, anywhere. Booking quantity is
   capped at 99 for that reason alone — `quantity × unit_price_vnd` has to stay

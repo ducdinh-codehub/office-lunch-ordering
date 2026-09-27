@@ -301,13 +301,10 @@ function revalidateLuckyEnvelopePages() {
 const luckyEnvelopeSchema = z.object({ enabled: z.boolean() });
 
 /**
- * Turns the lì xì may mắn on or off. Either way the envelopes are wiped first:
- * off ends the round, on starts a new one — everyone can open again. Wiping
- * takes the discount back from any day not yet paid; a claimed day keeps the
- * amount written on its payments row.
- *
- * Delete first, then flip the switch. If the second write fails the envelopes
- * are merely gone early, which is what the admin asked for anyway.
+ * Turns the lì xì may mắn on or off — the switch and nothing else. Envelopes
+ * already opened are kept either way: off only hides the envelope from anyone
+ * who has not opened theirs, the discounts already won still count, and on
+ * again resumes the same round. Starting a new round is `resetLuckyEnvelopes`.
  */
 export async function setLuckyEnvelopeEnabled(input: unknown): Promise<ActionResult> {
   try {
@@ -317,7 +314,6 @@ export async function setLuckyEnvelopeEnabled(input: unknown): Promise<ActionRes
 
     const { enabled } = luckyEnvelopeSchema.parse(input);
 
-    await db.delete(luckyEnvelopes);
     await db
       .insert(appSettings)
       .values({ id: SETTINGS_ID, luckyEnvelopeEnabled: enabled, updatedAt: new Date() })
@@ -334,9 +330,10 @@ export async function setLuckyEnvelopeEnabled(input: unknown): Promise<ActionRes
 }
 
 /**
- * Starts a new round without switching the feature off: every envelope is
- * deleted, so everyone gets a fresh one. Same consequence as turning it off —
- * discounts on unpaid days are taken back.
+ * Starts a new round: every envelope is deleted, so everyone gets a fresh one
+ * (once the feature is on). The only thing that wipes them — discounts on
+ * unpaid days are taken back; a claimed day keeps the amount on its payments
+ * row.
  */
 export async function resetLuckyEnvelopes(): Promise<ActionResult<number>> {
   try {
