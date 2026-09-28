@@ -42,7 +42,7 @@ export function FoodBackdrop() {
   return (
     <div
       aria-hidden
-      className="food-backdrop pointer-events-none fixed inset-0 -z-10 overflow-hidden select-none"
+      className="food-backdrop pointer-events-none fixed inset-0 m-0 -z-10 overflow-hidden select-none"
     >
       {PIECES.map((piece, index) => (
         <span

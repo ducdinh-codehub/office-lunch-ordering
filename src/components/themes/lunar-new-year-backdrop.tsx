@@ -186,7 +186,7 @@ export function LunarNewYearBackdrop() {
   return (
     <div
       aria-hidden
-      className="tet-backdrop pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="tet-backdrop pointer-events-none fixed inset-0 m-0 -z-10 overflow-hidden"
     >
       {/* Red and gold by day; a deep red night by night. */}
       <div className="absolute inset-x-0 top-0 h-[60vh] bg-gradient-to-b from-red-100/70 via-amber-50/40 to-transparent dark:from-red-950/80 dark:via-amber-950/30" />

@@ -117,7 +117,7 @@ export function CozyWinterBackdrop() {
   return (
     <div
       aria-hidden
-      className="winter-backdrop pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="winter-backdrop pointer-events-none fixed inset-0 m-0 -z-10 overflow-hidden"
     >
       {/* Lamplight by day — peach and honey; by night a cocoa-dark room with
           embers glowing low, as if from a hearth. */}

@@ -63,7 +63,7 @@ export function MidAutumnBackdrop() {
   return (
     <div
       aria-hidden
-      className="mooncake-backdrop pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="mooncake-backdrop pointer-events-none fixed inset-0 m-0 -z-10 overflow-hidden"
     >
       {/* Shared gradients for every lantern below. */}
       <svg width="0" height="0" className="absolute">

@@ -138,7 +138,7 @@ export function HalloweenBackdrop() {
   return (
     <div
       aria-hidden
-      className="halloween-backdrop pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="halloween-backdrop pointer-events-none fixed inset-0 m-0 -z-10 overflow-hidden"
     >
       {/* A soft pumpkin dusk by day; a neutral charcoal night by night — warm
           and low-contrast, easy on the eyes. Warm-grey fog at the floor. */}
