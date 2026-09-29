@@ -390,3 +390,30 @@ export async function resetLuckyEnvelopes(): Promise<ActionResult<number>> {
     return toActionError(cause, "Không đặt lại được lì xì.");
   }
 }
+
+const gymPromoSchema = z.object({ enabled: z.boolean() });
+
+/** Turns the Gym Time promo dialog shown after sign-in on or off. */
+export async function setGymPromoEnabled(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { enabled } = gymPromoSchema.parse(input);
+
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, gymPromoEnabled: enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: appSettings.id,
+        set: { gymPromoEnabled: enabled, updatedAt: new Date() },
+      });
+
+    // The dialog is rendered by the (app) layout, so every page under it.
+    revalidatePath("/", "layout");
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không đổi được thông báo Gym Time.");
+  }
+}

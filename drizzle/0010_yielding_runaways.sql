@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "gym_promo_enabled" boolean DEFAULT false NOT NULL;

@@ -305,6 +305,8 @@ export const appSettings = pgTable("app_settings", {
    * `lucky_envelopes`, so turning it back on gives everyone a fresh envelope.
    */
   luckyEnvelopeEnabled: boolean("lucky_envelope_enabled").notNull().default(false),
+  /** Whether the Gym Time promo dialog greets each diner once per sign-in. */
+  gymPromoEnabled: boolean("gym_promo_enabled").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

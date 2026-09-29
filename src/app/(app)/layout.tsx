@@ -42,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <AppShell user={user} donate={donate}>
       {children}
-      <GymTimePromoDialog />
+      {settings.gymPromoEnabled && <GymTimePromoDialog />}
     </AppShell>
   );
 }

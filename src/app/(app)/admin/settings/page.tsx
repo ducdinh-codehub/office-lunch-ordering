@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 
 import { SettingsForm } from "@/components/admin/settings-form";
 import { GreetingEditor } from "@/components/admin/greeting-editor";
+import { GymPromoSettings } from "@/components/admin/gym-promo-settings";
 import { HomeThemePicker } from "@/components/admin/home-theme-picker";
 import { LuckyEnvelopeSettings } from "@/components/admin/lucky-envelope-settings";
 import { MemberList } from "@/components/admin/member-list";
@@ -56,6 +57,8 @@ export default async function AdminSettingsPage() {
         opened={envelopeStats.opened}
         byPercent={envelopeStats.byPercent}
       />
+
+      <GymPromoSettings enabled={settings.gymPromoEnabled} />
 
       <MemberList
         members={members.map((member) => ({
