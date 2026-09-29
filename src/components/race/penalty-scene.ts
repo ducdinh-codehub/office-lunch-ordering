@@ -25,14 +25,14 @@ const KEEPER_Z = 0.35;
 const KEEPER_COLOR = "#ec4899";
 
 /** Standing over the ball before the run-up, while "A đối mặt B" is on screen. */
-const INTRO_MS = 1400;
+const INTRO_MS = 1000;
 /** When the fan takes the kick he stole, after the shooter would have. */
 const HOOLIGAN_KICK_DELAY = 350;
 /**
  * After the verdict, how long it stays up before the next kick: long enough
  * to read the verdict and the commentary and take in who is still standing.
  */
-const REACT_MS = 2800;
+const REACT_MS = 2000;
 const VAR_DELAY_MS = 900;
 const VAR_CHECK_MS = 1900;
 

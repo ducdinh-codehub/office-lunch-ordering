@@ -14,10 +14,10 @@ import { pickVideoType } from "./recording";
 const HOLD_MS = 2000;
 const INTRO_MS = 2200;
 /** The rules screen: one row of the worked example every RULE_ROW_MS, then a pause to read. */
-const RULE_ROW_MS = 2000;
+const RULE_ROW_MS = 1600;
 const RULES_MS = 1200 + RULE_EXAMPLE.length * RULE_ROW_MS + 1800;
 /** Who went out and who is left: read slowly, it is the part people need to follow. */
-const ROUND_BREAK_MS = 4500;
+const ROUND_BREAK_MS = 3200;
 const FINALE_MS = 2600;
 
 const EMOJI_FONT = `"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
@@ -36,8 +36,15 @@ type Segment =
  * follow it; a final is always at full speed. Tua nhanh is there for more.
  */
 function roundSpeed(alive: number): number {
-  return alive > 12 ? 1.6 : alive > 6 ? 1.25 : 1;
+  return Math.min(MAX_KICK_SPEED, KICK_SPEED * (alive > 12 ? 2 : alive > 6 ? 1.4 : 1));
 }
+
+/**
+ * Kicks play faster than life — a shootout at real pace drags. The round
+ * summaries and the rules are left at normal speed, since they are for reading.
+ */
+const KICK_SPEED = 1.25;
+const MAX_KICK_SPEED = 2;
 
 function schedule(plan: ShootoutPlan): Segment[] {
   const segments: Segment[] = [];
