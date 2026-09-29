@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { eventAt, pieLandsMs, progressAt, STEP_MS, type RaceEvent, type RacePlan } from "@/lib/dino-race";
 import {
   buildModelFrames,
-  DUCK_LOOKS,
+  buildPropImage,
   lookKey,
   moveFrames,
   sheetFrame,
@@ -15,7 +15,7 @@ import {
   type PoseMode,
 } from "./models-3d";
 import { CLOUD, CROWN, spriteCache } from "./pixel-art";
-import { RACERS, type RacerKind } from "./racers";
+import { flavorOf, RACERS, type RacerKind } from "./racers";
 import { pickVideoType } from "./recording";
 
 /** 3, 2, 1 — then the race clock starts. */
@@ -60,6 +60,11 @@ export const COLORS = [
 ];
 
 const MEDALS = ["🥇", "🥈", "🥉"];
+/**
+ * Name tags are see-through, so a tag drawn over a runner in the lane
+ * behind does not hide it. The winner's gold tag stays solid.
+ */
+const TAG_OPACITY = 0.5;
 const EMOJI_FONT = `"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
 
 const CHECK = 5;
@@ -132,7 +137,7 @@ type Line = { atMs: number; text: string; priority: number };
 /** What the commentator says, and when: lead changes, surprises and the finish. */
 function commentary(plan: RacePlan, kind: RacerKind): Line[] {
   const name = (runner: number) => plan.runners[runner].name;
-  const stumble = RACERS[kind].stumble;
+  const racer = RACERS[kind];
   const lines: Line[] = plan.leadChanges.map((change, i) => ({
     atMs: change.atMs,
     text: i === 0 ? `⚡ ${name(change.runner)} xuất phát nhanh nhất!` : `👑 ${name(change.runner)} vượt lên dẫn đầu!`,
@@ -141,12 +146,9 @@ function commentary(plan: RacePlan, kind: RacerKind): Line[] {
   for (const event of plan.events) {
     // Throws and their hits are called from the attacks below.
     if (event.kind === "throw" || event.kind === "splat" || event.kind === "slip") continue;
-    const text =
-      event.kind === "rocket"
-        ? `🚀 ${name(event.runner)} bứt phá từ cuối đoàn!`
-        : event.kind === "boost"
-          ? `🔥 ${name(event.runner)} tăng tốc!`
-          : `${stumble.emoji} ${name(event.runner)} ${stumble.text}`;
+    const list = event.kind === "rocket" ? racer.rockets : event.kind === "boost" ? racer.bursts : racer.stumbles;
+    const flavor = flavorOf(list, event.startMs, event.runner);
+    const text = `${flavor.emoji} ${name(event.runner)} ${flavor.text}`;
     lines.push({ atMs: event.startMs, text, priority: event.kind === "rocket" ? 2 : 1 });
   }
   for (const attack of plan.attacks) {
@@ -277,11 +279,11 @@ export function RaceTrack({
     // they are ready (or if WebGL is missing) the pixel sprites stand in.
     let models: ModelFrames | null = null;
     const ratio = Math.min(2, window.devicePixelRatio || 1);
-    // Each duck gets a costume, dealt from a fresh shuffle every race so
-    // nobody is always the one in the swim ring. Only looks, not odds.
-    const deck = [...DUCK_LOOKS].sort(() => Math.random() - 0.5);
+    // Each duck gets a costume and each horse a coat, dealt from a fresh
+    // shuffle every race so nobody always gets the same. Only looks, not odds.
+    const deck = [...(racer.model?.looks ?? ["default"])].sort(() => Math.random() - 0.5);
     const looks: Look[] = plan.runners.map((_, lane) => ({
-      look: racer.model?.kind === "duck" ? deck[lane % deck.length] : "default",
+      look: deck[lane % deck.length],
       color: COLORS[lane % COLORS.length],
     }));
     if (racer.model) {
@@ -293,6 +295,15 @@ export function RaceTrack({
           if (finished) draw(endMs);
         })
         .catch((error) => console.error("Could not build the 3D racers", error));
+    }
+    // Scenery in 3D too, where the racer has some.
+    let prop: { image: HTMLCanvasElement; width: number; height: number } | null = null;
+    if (scene.prop3d) {
+      buildPropImage(scene.prop3d, 44, ratio)
+        .then((built) => {
+          if (!disposed) prop = built;
+        })
+        .catch((error) => console.error("Could not build the scenery", error));
     }
 
     // Everything below depends on the canvas's width and is worked out in
@@ -378,14 +389,26 @@ export function RaceTrack({
       const near = offscreen(GROUND_TILE, groundHeight, ratio);
       near.context.fillStyle = scene.mark;
       const count = scene.marks === "lanes" ? groundHeight / 8 : groundHeight / 3;
+      const wavy = scene.marks === "ripples" || scene.marks === "ropes";
       for (let i = 0; i < count; i++) {
-        const length = scene.marks === "ripples" ? 4 + Math.floor(Math.random() * 4) * 2 : 1 + Math.floor(Math.random() * 3) * 2;
+        const length = wavy ? 4 + Math.floor(Math.random() * 4) * 2 : 1 + Math.floor(Math.random() * 3) * 2;
         near.context.fillRect(
           Math.floor(Math.random() * GROUND_TILE),
           scene.edgeHeight + Math.floor(Math.random() * (groundHeight - scene.edgeHeight)),
           length,
           1,
         );
+      }
+      if (scene.marks === "ropes") {
+        // Lane ropes between the swimmers, red and white floats. They are
+        // in the tile, so they scroll with the water.
+        for (let lane = 0; lane < lanes - 1; lane++) {
+          const y = Math.round((footY(lane) + footY(lane + 1)) / 2) - (horizon + 4);
+          for (let x = 0; x < GROUND_TILE; x += 8) {
+            near.context.fillStyle = (x / 8) % 4 < 2 ? "#ef4444" : "#ffffff";
+            near.context.fillRect(x, y, 6, 2);
+          }
+        }
       }
       ground = near.canvas;
 
@@ -494,7 +517,11 @@ export function RaceTrack({
 
       for (const x of roadside) {
         const screen = x - camera;
-        if (screen > -40 && screen < width + 10) {
+        if (prop) {
+          if (screen > -prop.width && screen < width + 10) {
+            context.drawImage(prop.image, screen, horizon + 10 - prop.height, prop.width, prop.height);
+          }
+        } else if (screen > -40 && screen < width + 10) {
           paint(context, scene.prop, screen, horizon + 8 - scene.prop.height * 2, 2, scene.propColor);
         }
       }
@@ -590,8 +617,10 @@ export function RaceTrack({
             models.width,
             models.height,
           );
-          headY = foot - models.footY;
-          headX = nose - models.noseX + models.footX;
+          // The frame has room for every pose, so its top is well above the
+          // head: the icons and the crown go by the head itself.
+          headY = foot - models.footY + models.headY;
+          headX = nose - models.noseX + models.headX;
         } else {
           const stride = Math.floor(travelled / ((mode === "boost" ? 3 : 5) * pixel)) % 2;
           const art = mode === "run" || mode === "boost" || mode === "throw" ? racer.run[stride] : racer.stand;
@@ -615,19 +644,38 @@ export function RaceTrack({
         }
 
         heads[lane] = { x: headX, y: headY + bodyHeight * 0.12 };
-        const icon =
-          event?.kind === "stumble"
-            ? racer.stumble.emoji
-            : event?.kind === "rocket"
-              ? "🚀"
-              : event?.kind === "boost"
-                ? "🔥"
-                : event?.kind === "splat"
+        const flavored =
+          event && (event.kind === "stumble" || event.kind === "rocket" || event.kind === "boost")
+            ? flavorOf(
+                event.kind === "rocket" ? racer.rockets : event.kind === "boost" ? racer.bursts : racer.stumbles,
+                event.startMs,
+                lane,
+              )
+            : null;
+        const icon = flavored
+          ? flavored.emoji
+          : event?.kind === "splat"
                   ? "🤡"
                   : event?.kind === "slip"
                     ? "💫"
                     : null;
         if (icon) emoji(icon, headX, headY + 2);
+        // Last place's big burst has a reason: a shark closing in behind a
+        // swimmer, a carrot dangled in front of a horse.
+        if (event?.kind === "rocket" && racer.chaser) {
+          const big = Math.round(emojiSize * 1.9);
+          if (racer.chaser === "shark") {
+            const gap = 16 + 10 * Math.sin(elapsed / 120);
+            // The emoji faces left; this one is chasing to the right.
+            context.save();
+            context.translate(tail - gap, 0);
+            context.scale(-1, 1);
+            emoji("🦈", 0, foot + big * 0.35, big);
+            context.restore();
+          } else {
+            emoji("🥕", nose + 10, headY + bodyHeight * 0.45 + 4 * Math.sin(elapsed / 90), big * 0.8);
+          }
+        }
         if (home && lane === winner) {
           paint(context, CROWN, headX - (CROWN.width * pixel) / 2, headY - CROWN.height * pixel - 2, pixel, SCENE.gold);
         }
@@ -668,7 +716,10 @@ export function RaceTrack({
         const y = Math.round(footY(lane) - bodyHeight * 0.5 - tagHeight / 2);
         const finish = plan.runners[lane].finishMs;
         const home = finish !== null && elapsed >= finish;
-        context.drawImage(home && lane === winner ? winnerTag : tags[lane], x, y, w, tagHeight);
+        const crowned = home && lane === winner;
+        context.globalAlpha = crowned ? 1 : TAG_OPACITY;
+        context.drawImage(crowned ? winnerTag : tags[lane], x, y, w, tagHeight);
+        context.globalAlpha = 1;
         const medal = MEDALS[place.get(lane)!];
         if (home && medal) emoji(medal, x - 8, y + tagHeight + 1, tagHeight - 2);
       }

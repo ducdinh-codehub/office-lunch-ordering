@@ -169,7 +169,7 @@ export function DinoRace({
 
   const penalty = game === "penalty";
   // What the players are called on the buttons: vịt, người, cầu thủ.
-  const players = penalty ? "cầu thủ" : RACERS[game].label.toLowerCase();
+  const players = penalty ? "cầu thủ" : RACERS[game].unit;
   const names = roster.filter((entry) => entry.on).map((entry) => entry.name);
   const canStart = names.length >= RACE_MIN_RUNNERS;
   const full = names.length >= RACE_MAX_RUNNERS;
@@ -402,7 +402,7 @@ export function DinoRace({
           <CardTitle className="text-base">Chơi gì</CardTitle>
         </CardHeader>
         <CardContent>
-          <div role="radiogroup" aria-label="Trò chơi" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div role="radiogroup" aria-label="Trò chơi" className="grid grid-cols-3 gap-2 sm:grid-cols-6">
             {GAMES.map((option) => (
               <button
                 key={option.kind}
