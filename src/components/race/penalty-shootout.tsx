@@ -6,13 +6,18 @@ import { FastForward, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Kick, ShootoutPlan } from "@/lib/penalty";
 import { kickScript, type KickScript, type PenaltyScene } from "./penalty-scene";
+import { knockedOut, RULE_EXAMPLE, RULE_SUMMARY } from "./penalty-rules";
 import { COLORS } from "./race-track";
 import { pickVideoType } from "./recording";
 
 /** How long a recording lingers on the champion before it ends. */
 const HOLD_MS = 2000;
 const INTRO_MS = 2200;
-const ROUND_BREAK_MS = 2000;
+/** The rules screen: one row of the worked example every RULE_ROW_MS, then a pause to read. */
+const RULE_ROW_MS = 2000;
+const RULES_MS = 1200 + RULE_EXAMPLE.length * RULE_ROW_MS + 1800;
+/** Who went out and who is left: read slowly, it is the part people need to follow. */
+const ROUND_BREAK_MS = 4500;
 const FINALE_MS = 2600;
 
 const EMOJI_FONT = `"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
@@ -20,16 +25,18 @@ const SANS = `ui-sans-serif, system-ui, sans-serif, ${EMOJI_FONT}`;
 
 type Segment =
   | { type: "intro"; start: number; duration: number; speed: number }
+  | { type: "rules"; start: number; duration: number; speed: number }
   | { type: "kick"; start: number; duration: number; speed: number; kick: Kick; script: KickScript; index: number }
   | { type: "break"; start: number; duration: number; speed: number; round: number }
   | { type: "finale"; start: number; duration: number; speed: number };
 
 /**
- * A big field makes for a long shootout, so the early rounds are played
- * faster the more people are still in; a final is always at full speed.
+ * A big field makes for a long shootout, so the early rounds are played a
+ * little faster the more people are still in — only a little, or nobody can
+ * follow it; a final is always at full speed. Tua nhanh is there for more.
  */
 function roundSpeed(alive: number): number {
-  return alive > 12 ? 2.4 : alive > 6 ? 1.7 : 1;
+  return alive > 12 ? 1.6 : alive > 6 ? 1.25 : 1;
 }
 
 function schedule(plan: ShootoutPlan): Segment[] {
@@ -42,13 +49,14 @@ function schedule(plan: ShootoutPlan): Segment[] {
     at += segment.duration;
   };
   push({ type: "intro", duration: INTRO_MS, speed: 1 });
+  push({ type: "rules", duration: RULES_MS, speed: 1 });
   plan.kicks.forEach((kick, index) => {
     const round = plan.rounds[kick.round - 1];
     const script = kickScript(kick, plan.names[kick.shooter], plan.names[kick.keeper]);
     push({ type: "kick", duration: script.duration, speed: roundSpeed(round.shooters.length), kick, script, index });
     const last = plan.kicks[index + 1]?.round !== kick.round;
     if (last && plan.kicks[index + 1]) {
-      push({ type: "break", duration: ROUND_BREAK_MS, speed: roundSpeed(round.shooters.length), round: kick.round });
+      push({ type: "break", duration: ROUND_BREAK_MS, speed: 1, round: kick.round });
     }
   });
   push({ type: "finale", duration: FINALE_MS, speed: 1 });
@@ -173,6 +181,84 @@ export function PenaltyShootout({
     };
 
     const kicksBefore = (index: number) => plan.kicks.slice(0, index);
+
+    /**
+     * How a shootout works, drawn as the worked example: each round's kicks
+     * as chips (✅ through, ❌ out), one round at a time, each with the rule
+     * it shows spelled out underneath.
+     */
+    const drawRules = (local: number, duration: number) => {
+      const fade = Math.min(1, local / 300, (duration - local) / 300);
+      dim(0.78 * fade);
+      context.globalAlpha = Math.max(0, fade);
+      const small = width < 420;
+      const title = small ? 20 : 26;
+      const top = small ? 10 : 18;
+      context.font = `900 ${title}px ${SANS}`;
+      context.textAlign = "center";
+      context.textBaseline = "top";
+      context.fillStyle = "#facc15";
+      context.fillText("LUẬT CHƠI", width / 2, top);
+      context.font = `600 ${small ? 11 : 13}px ${SANS}`;
+      context.fillStyle = "#e2e8f0";
+      const summary = wrap(context, RULE_SUMMARY, width - 30);
+      summary.forEach((line, i) => context.fillText(line, width / 2, top + title + 6 + i * (small ? 14 : 17)));
+
+      const rowsTop = top + title + 12 + summary.length * (small ? 14 : 17);
+      const rowHeight = Math.min(small ? 62 : 78, (height - rowsTop - 8) / RULE_EXAMPLE.length);
+      const labelWidth = small ? 50 : 70;
+      const chip = { w: small ? 44 : 60, h: small ? 22 : 28, gap: small ? 6 : 10 };
+      const rowWidth = labelWidth + 4 * chip.w + 3 * chip.gap;
+      const left = Math.max(10, (width - rowWidth) / 2);
+
+      RULE_EXAMPLE.forEach(({ round, kicks, note }, row) => {
+        const shownAt = 800 + row * RULE_ROW_MS;
+        if (local < shownAt) return;
+        const y = rowsTop + row * rowHeight;
+        context.textBaseline = "middle";
+        context.textAlign = "left";
+        context.font = `800 ${small ? 11 : 13}px ${SANS}`;
+        context.fillStyle = "#94a3b8";
+        context.fillText(`LƯỢT ${round}`, left, y + chip.h / 2);
+        kicks.forEach(([name, scored], i) => {
+          // Each kick lands a beat after the last, as it would on the pitch.
+          const kickAt = shownAt + 150 + i * 280;
+          if (local < kickAt) return;
+          const pop = Math.min(1, (local - kickAt) / 150);
+          const x = left + labelWidth + i * (chip.w + chip.gap);
+          const out = knockedOut(kicks, scored);
+          context.globalAlpha = Math.max(0, fade) * pop;
+          context.fillStyle = scored ? "#16a34a" : out ? "#dc2626" : "#475569";
+          context.beginPath();
+          context.roundRect(x, y, chip.w, chip.h, chip.h / 2);
+          context.fill();
+          context.fillStyle = "#ffffff";
+          context.textAlign = "center";
+          context.font = `800 ${small ? 11 : 13}px ${SANS}`;
+          context.fillText(`${name} ${scored ? "✅" : "❌"}`, x + chip.w / 2, y + chip.h / 2 + 1);
+          if (out) {
+            // Struck through: this one goes home.
+            context.strokeStyle = "#ffffff";
+            context.lineWidth = 2;
+            context.beginPath();
+            context.moveTo(x + 6, y + chip.h / 2);
+            context.lineTo(x + chip.w - 6, y + chip.h / 2);
+            context.stroke();
+          }
+          context.globalAlpha = Math.max(0, fade);
+        });
+        const noteAt = shownAt + 150 + kicks.length * 280 + 200;
+        if (local >= noteAt) {
+          context.globalAlpha = Math.max(0, fade) * Math.min(1, (local - noteAt) / 250);
+          context.textAlign = "left";
+          context.font = `700 ${small ? 11 : 13}px ${SANS}`;
+          context.fillStyle = row === RULE_EXAMPLE.length - 1 ? "#facc15" : "#ffffff";
+          context.fillText(`→ ${note}`, left + labelWidth, y + chip.h + (small ? 11 : 14));
+          context.globalAlpha = Math.max(0, fade);
+        }
+      });
+      context.globalAlpha = 1;
+    };
 
     const draw = (at: number) => {
       const index = segments.findIndex((segment) => at < segment.start + segment.duration);
@@ -301,6 +387,10 @@ export function PenaltyShootout({
         dim(0.55 * Math.min(1, (segment.duration - local) / 400));
         bigText(["LOẠT SÚT", "LUÂN LƯU ⚽"], height * 0.36, "#ffffff", Math.min(1, local / 250));
         pill(`${plan.names.length} cầu thủ · đá hỏng là bị loại`, width / 2, height * 0.66, font(700, 14), "rgba(236, 72, 153, 0.92)", "#ffffff", "center");
+      }
+
+      if (segment.type === "rules") {
+        drawRules(local, segment.duration);
       }
 
       if (segment.type === "break") {

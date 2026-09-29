@@ -23,6 +23,7 @@ import {
 } from "@/lib/dino-race";
 import { OUTCOMES, planShootout, type ShootoutPlan } from "@/lib/penalty";
 import { cn } from "cn";
+import { PenaltyRules } from "./penalty-rules";
 import { PenaltyShootout } from "./penalty-shootout";
 import { RaceTrack } from "./race-track";
 import { RACERS, RACER_KINDS, type RacerKind } from "./racers";
@@ -543,6 +544,17 @@ export function DinoRace({
           </form>
         </CardContent>
       </Card>
+
+      {penalty && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Luật chơi</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PenaltyRules />
+          </CardContent>
+        </Card>
+      )}
 
       {!penalty && (
       <Card>
