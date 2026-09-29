@@ -358,10 +358,6 @@ export function DinoRace({
                   {option.emoji}
                 </span>
                 {option.label}
-                {option.weapons && (
-                  <span className="text-muted-foreground text-xs font-normal">có vũ khí 🥧🍌</span>
-                )}
-                {option.note && <span className="text-muted-foreground text-xs font-normal">{option.note}</span>}
               </button>
             ))}
           </div>

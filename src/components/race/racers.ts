@@ -35,8 +35,6 @@ export type Racer = {
   model?: { kind: ModelKind; cells: number; /** Nose to tail, as a share of the height. */ length: number };
   /** Throws pies and drops banana peels (`planRace`'s weapons). */
   weapons: boolean;
-  /** A line under the choice, when there is something to tell. */
-  note?: string;
   /** What a stumble is called, and its emoji. */
   stumble: { emoji: string; text: string };
   scene: {
@@ -90,7 +88,6 @@ export const RACERS: Record<RacerKind, Racer> = {
     run: [DUCK, DUCK],
     stand: DUCK,
     grounded: false,
-    note: "9 kiểu vịt 🎩😎🛟",
     model: { kind: "duck", cells: 23, length: 1.05 },
     weapons: false,
     stumble: { emoji: "🌀", text: "bị cuốn vào xoáy nước!" },
