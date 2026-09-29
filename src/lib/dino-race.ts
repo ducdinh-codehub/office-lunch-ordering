@@ -32,6 +32,20 @@ const PACE_MAX = 1.4;
 const QUIET_STEPS = 4;
 /** After an event, a runner is left alone for this many steps. */
 const COOLDOWN_STEPS = 6;
+
+/**
+ * The last stretch of the race, as a share of the time, where it is decided.
+ * Without it whoever led with a tenth to go won three times in four: the
+ * finish was a formality. In it surprises come several times as often,
+ * bursts go to whoever is chasing, stumbles to whoever is in front, and the
+ * pack is pulled together — so the lead is at its least safe just before
+ * the line. It is who crosses first that still wins; this only makes the
+ * last metres worth watching.
+ */
+const FINAL_STRETCH = 0.7;
+const FINAL_EVENT_BOOST = 3.5;
+const FINAL_EVENT_CAP = 0.09;
+const FINAL_COOLDOWN_STEPS = 3;
 /** Two finishers closer than this call for the photo-finish replay. */
 export const PHOTO_FINISH_MS = 300;
 
@@ -160,6 +174,8 @@ export function planRace(
   const pies: { attack: Attack; lands: number }[] = [];
   const peels: { attack: Attack; at: number; from: number }[] = [];
 
+  const inFinal = (step: number) => step >= steps * FINAL_STRETCH && step < steps;
+
   const begin = (runner: number, kind: RaceEventKind, step: number) => {
     const [min, max] = EVENT_EFFECT[kind].steps;
     const length = min + Math.floor(random() * (max - min + 1));
@@ -169,7 +185,8 @@ export function planRace(
     const event = { runner, kind, startMs: step * STEP_MS, endMs: (step + length) * STEP_MS };
     events.push(event);
     active[runner] = { event, until: step + length };
-    calmUntil[runner] = Math.max(calmUntil[runner], step + length + COOLDOWN_STEPS);
+    const cooldown = inFinal(step) ? FINAL_COOLDOWN_STEPS : COOLDOWN_STEPS;
+    calmUntil[runner] = Math.max(calmUntil[runner], step + length + cooldown);
   };
 
   for (let step = 0; step < maxSteps; step++) {
@@ -209,19 +226,34 @@ export function planRace(
 
       if (!active[i] && !crossed && step >= calmUntil[i]) {
         const roll = random();
-        const boostChance = eventChance * (0.4 + 1.6 * behind[i]);
-        const stumbleChance = eventChance * (0.3 + 1.2 * (1 - behind[i]));
-        const attackChance = weapons ? eventChance * 1.8 : 0;
+        const final = inFinal(step);
+        const chance = final ? Math.min(FINAL_EVENT_CAP, eventChance * FINAL_EVENT_BOOST) : eventChance;
+        // In the final stretch the front runners are the ones who trip, and
+        // everyone behind them is the one who finds another gear. In a small
+        // field "the front" is the leader alone, or nobody would be chasing.
+        const front = order.indexOf(i) < (count <= 3 ? 1 : 2);
+        const boostChance = final
+          ? chance * (front ? 0.15 : 0.6 + 1.4 * behind[i])
+          : chance * (0.4 + 1.6 * behind[i]);
+        const stumbleChance = final ? chance * (front ? 1.5 : 0.15) : chance * (0.3 + 1.2 * (1 - behind[i]));
+        // In the final stretch the front runners are too busy to throw — a peel
+        // dropped from the lead would only protect it.
+        // Every chaser aims at the leader then, so each throws less in a big
+        // field: the leader faces about as many pies whatever its size.
+        const attackChance =
+          !weapons || (final && front) ? 0 : final ? chance * Math.min(1, 4 / count) : eventChance * 1.8;
         if (roll < boostChance) begin(i, behind[i] === 1 && count > 2 && random() < 0.6 ? "rocket" : "boost", step);
         else if (roll < boostChance + stumbleChance) begin(i, "stumble", step);
         else if (roll < boostChance + stumbleChance + attackChance) {
           // Pies go forward, peels go back: the leader can only drop a peel,
           // last place can only throw a pie, and the middle mostly throws.
           const place = order.indexOf(i);
-          const ahead = order.slice(0, place).reverse().find((other) => !home(other));
+          // Usually at whoever is just ahead; in the final stretch, at the leader.
+          const aheadOf = order.slice(0, place).filter((other) => !home(other));
+          const ahead = final ? aheadOf[0] : aheadOf.at(-1);
           const after = order.slice(place + 1).find((other) => !home(other));
           const weapon: Weapon | null =
-            ahead !== undefined && (after === undefined || random() < 0.6)
+            ahead !== undefined && (after === undefined || final || random() < 0.6)
               ? "pie"
               : after !== undefined
                 ? "banana"
@@ -248,7 +280,7 @@ export function planRace(
 
       pace[i] = Math.min(PACE_MAX, Math.max(PACE_MIN, pace[i] + (random() - 0.5) * DRIFT));
       // A gentle pull towards the pack keeps the race close without deciding it.
-      const pull = 1 + 0.1 * (behind[i] - 0.5);
+      const pull = 1 + (inFinal(step) ? 0.22 : 0.1) * (behind[i] - 0.5);
       const effect = active[i] ? EVENT_EFFECT[active[i]!.event.kind].pace : 1;
       distance[i].push(now[i] + pace[i] * pull * effect * STEP_MS);
     }
