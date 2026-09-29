@@ -21,12 +21,71 @@ import {
   sameRunnerName,
   type RacePlan,
 } from "@/lib/dino-race";
+import { OUTCOMES, planShootout, type ShootoutPlan } from "@/lib/penalty";
 import { cn } from "cn";
+import { PenaltyShootout } from "./penalty-shootout";
 import { RaceTrack } from "./race-track";
 import { RACERS, RACER_KINDS, type RacerKind } from "./racers";
 import { canRecord, videoFileName } from "./recording";
 
 type Phase = "setup" | "racing" | "done";
+
+/** A race, run as one of the racers — or not a race at all, a penalty shootout. */
+type Game = RacerKind | "penalty";
+
+const GAMES: { kind: Game; label: string; emoji: string }[] = [
+  ...RACER_KINDS.map(({ kind, label, emoji }) => ({ kind, label, emoji })),
+  { kind: "penalty", label: "Đá penalty", emoji: "⚽" },
+];
+
+/** What the results card shows, whichever game was played. */
+type Result = {
+  /** Names, first place first. */
+  ranking: string[];
+  /** A note beside each place. */
+  notes: string[];
+  /** Lines under the winner's name. */
+  extras: string[];
+};
+
+function raceResult(plan: RacePlan): Result {
+  const ranking = plan.ranking.map((index) => plan.runners[index].name);
+  // How far behind the winner each crossed, which is what makes a close one feel close.
+  const notes = plan.ranking.map((index) => {
+    const finish = plan.runners[index].finishMs;
+    if (finish === null) return "chưa về đích";
+    const gap = (finish - plan.durationMs) / 1000;
+    return gap === 0 ? `${(plan.durationMs / 1000).toFixed(2)}s` : `+${gap.toFixed(2)}s`;
+  });
+  const extras: string[] = [];
+  if (plan.photoFinish) {
+    const gap = (plan.runners[plan.ranking[1]].finishMs! - plan.durationMs) / 1000;
+    extras.push(`📸 Sát nút — hơn ${ranking[1]} chưa tới ${gap.toFixed(2)} giây!`);
+  }
+  if (plan.attacks.length > 0) {
+    const pies = plan.attacks.filter((a) => a.weapon === "pie");
+    const hits = pies.filter((a) => a.hitMs !== null).length;
+    const slips = plan.attacks.filter((a) => a.weapon === "banana" && a.hitMs !== null && !a.dodged).length;
+    extras.push(`🥧 ${hits}/${pies.length} bánh kem trúng đích · 🍌 ${slips} cú trượt vỏ chuối`);
+  }
+  return { ranking, notes, extras };
+}
+
+function shootoutResult(plan: ShootoutPlan): Result {
+  const ranking = plan.ranking.map((index) => plan.names[index]);
+  const notes = plan.ranking.map((index) => {
+    const goals = `${plan.goals[index]} bàn`;
+    const round = plan.outIn[index];
+    return round === null ? `vô địch · ${goals}` : `loại ở lượt ${round} · ${goals}`;
+  });
+  const silly = plan.kicks.filter((kick) => OUTCOMES[kick.outcome].silly).length;
+  const goals = plan.kicks.filter((kick) => kick.goal).length;
+  return {
+    ranking,
+    notes,
+    extras: [`⚽ ${plan.kicks.length} quả, ${goals} bàn · 🤡 ${silly} tình huống dở khóc dở cười`],
+  };
+}
 
 /** The last race's film: not asked for, still being finished, unavailable, or ready to keep. */
 type Film = "off" | "pending" | "failed" | { url: string; file: File };
@@ -87,12 +146,13 @@ export function DinoRace({
         (fromToday ? racingToday.some((name) => sameRunnerName(name, entry.name)) : true),
     );
   });
-  const [kind, setKind] = useState<RacerKind>("dino");
+  const [game, setGame] = useState<Game>("dino");
   const [draft, setDraft] = useState("");
   const [seconds, setSeconds] = useState<number>(RACE_PRESET_SECONDS[1]);
   const [secondsInput, setSecondsInput] = useState(String(RACE_PRESET_SECONDS[1]));
   const [phase, setPhase] = useState<Phase>("setup");
   const [plan, setPlan] = useState<RacePlan | null>(null);
+  const [shootout, setShootout] = useState<ShootoutPlan | null>(null);
   // Bumped per race so the track remounts and its countdown starts afresh.
   const [raceId, setRaceId] = useState(0);
   // Read after hydration only: the server cannot know what this browser can film.
@@ -106,7 +166,9 @@ export function DinoRace({
     return () => URL.revokeObjectURL(film.url);
   }, [film]);
 
-  const racer = RACERS[kind];
+  const penalty = game === "penalty";
+  // What the players are called on the buttons: vịt, người, cầu thủ.
+  const players = penalty ? "cầu thủ" : RACERS[game].label.toLowerCase();
   const names = roster.filter((entry) => entry.on).map((entry) => entry.name);
   const canStart = names.length >= RACE_MIN_RUNNERS;
   const full = names.length >= RACE_MAX_RUNNERS;
@@ -153,7 +215,8 @@ export function DinoRace({
     const runners = list.filter((entry) => entry.on).map((entry) => entry.name);
     if (runners.length < RACE_MIN_RUNNERS) return;
     setRoster(list);
-    setPlan(planRace(runners, seconds, { weapons: RACERS[kind].weapons }));
+    if (penalty) setShootout(planShootout(runners));
+    else setPlan(planRace(runners, seconds, { weapons: RACERS[game].weapons }));
     setRaceId((id) => id + 1);
     setFilm(record && recordable ? "pending" : "off");
     setPhase("racing");
@@ -184,23 +247,20 @@ export function DinoRace({
     }
   }
 
-  if (phase !== "setup" && plan) {
-    const ranking = plan.ranking.map((index) => plan.runners[index].name);
-    // How far behind the winner each crossed, which is what makes a close one feel close.
-    const gaps = plan.ranking.map((index) => {
-      const finish = plan.runners[index].finishMs;
-      if (finish === null) return "chưa về đích";
-      const gap = (finish - plan.durationMs) / 1000;
-      return gap === 0 ? `${(plan.durationMs / 1000).toFixed(2)}s` : `+${gap.toFixed(2)}s`;
-    });
+  const played = penalty ? shootout : plan;
+  if (phase !== "setup" && played) {
+    const result = penalty ? shootoutResult(shootout!) : raceResult(plan!);
+    const { ranking } = result;
+    const again = penalty ? "Đá" : "Đua";
     return (
       <div className="space-y-4">
         <Card className="overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="text-base">
-              {phase === "racing" ? "Đang đua…" : "Kết quả"}{" "}
+              {phase === "racing" ? (penalty ? "Đang đá…" : "Đang đua…") : "Kết quả"}{" "}
               <span className="text-muted-foreground font-normal">
-                · {plan.runners.length} {racer.label.toLowerCase()} · {plan.durationMs / 1000}s
+                · {ranking.length} {players}
+                {!penalty && ` · ${plan!.durationMs / 1000}s`}
               </span>
             </CardTitle>
             {phase === "racing" && (
@@ -219,14 +279,24 @@ export function DinoRace({
             )}
           </CardHeader>
           <CardContent className="px-2 sm:px-4">
-            <RaceTrack
-              key={raceId}
-              plan={plan}
-              kind={kind}
-              record={film === "pending"}
-              onRecorded={keepFilm}
-              onFinish={() => setPhase("done")}
-            />
+            {penalty ? (
+              <PenaltyShootout
+                key={raceId}
+                plan={shootout!}
+                record={film === "pending"}
+                onRecorded={keepFilm}
+                onFinish={() => setPhase("done")}
+              />
+            ) : (
+              <RaceTrack
+                key={raceId}
+                plan={plan!}
+                kind={game as RacerKind}
+                record={film === "pending"}
+                onRecorded={keepFilm}
+                onFinish={() => setPhase("done")}
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -237,23 +307,15 @@ export function DinoRace({
                 <p className="text-4xl" aria-hidden>
                   🏆
                 </p>
-                <p className="mt-1 text-xl font-semibold">{ranking[0]} thắng!</p>
-                {plan.photoFinish && (
-                  <p className="text-muted-foreground text-sm">
-                    📸 Sát nút — hơn {ranking[1]} chưa tới{" "}
-                    {((plan.runners[plan.ranking[1]].finishMs! - plan.durationMs) / 1000).toFixed(2)}{" "}
-                    giây!
-                  </p>
-                )}
-              </div>
-              {plan.attacks.length > 0 && (
-                <p className="text-muted-foreground text-center text-sm">
-                  🥧 {plan.attacks.filter((a) => a.weapon === "pie" && a.hitMs !== null).length}/
-                  {plan.attacks.filter((a) => a.weapon === "pie").length} bánh kem trúng đích · 🍌{" "}
-                  {plan.attacks.filter((a) => a.weapon === "banana" && a.hitMs !== null && !a.dodged).length} cú trượt
-                  vỏ chuối
+                <p className="mt-1 text-xl font-semibold">
+                  {ranking[0]} {penalty ? "vô địch!" : "thắng!"}
                 </p>
-              )}
+              </div>
+              {result.extras.map((line) => (
+                <p key={line} className="text-muted-foreground text-center text-sm">
+                  {line}
+                </p>
+              ))}
               <ol className="divide-y rounded-lg border text-sm">
                 {ranking.map((name, place) => (
                   <li key={name} className="flex items-center gap-3 px-3 py-2">
@@ -264,7 +326,7 @@ export function DinoRace({
                       {name}
                     </span>
                     <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                      {gaps[place]}
+                      {result.notes[place]}
                     </span>
                   </li>
                 ))}
@@ -307,7 +369,7 @@ export function DinoRace({
               <div className="flex flex-wrap justify-center gap-2">
                 <Button onClick={() => start()}>
                   <RotateCcw className="size-4" />
-                  Đua lại
+                  {again} lại
                 </Button>
                 {names.length > RACE_MIN_RUNNERS && (
                   <Button
@@ -317,7 +379,7 @@ export function DinoRace({
                     }
                   >
                     <UserMinus className="size-4" />
-                    Bỏ {ranking[0]}, đua tiếp
+                    Bỏ {ranking[0]}, {again.toLowerCase()} tiếp
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => setPhase("setup")}>
@@ -336,20 +398,20 @@ export function DinoRace({
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Đua bằng gì</CardTitle>
+          <CardTitle className="text-base">Chơi gì</CardTitle>
         </CardHeader>
         <CardContent>
-          <div role="radiogroup" aria-label="Loại tay đua" className="grid grid-cols-3 gap-2">
-            {RACER_KINDS.map((option) => (
+          <div role="radiogroup" aria-label="Trò chơi" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {GAMES.map((option) => (
               <button
                 key={option.kind}
                 type="button"
                 role="radio"
-                aria-checked={kind === option.kind}
-                onClick={() => setKind(option.kind)}
+                aria-checked={game === option.kind}
+                onClick={() => setGame(option.kind)}
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-lg border px-2 py-3 text-sm transition-colors",
-                  kind === option.kind
+                  game === option.kind
                     ? "border-primary bg-primary/5 font-medium"
                     : "hover:bg-muted",
                 )}
@@ -482,6 +544,7 @@ export function DinoRace({
         </CardContent>
       </Card>
 
+      {!penalty && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Thời gian đua</CardTitle>
@@ -525,6 +588,7 @@ export function DinoRace({
           </p>
         </CardContent>
       </Card>
+      )}
 
       {recordable && (
         <Card>
@@ -538,7 +602,7 @@ export function DinoRace({
             <div className="space-y-0.5">
               <Label htmlFor="race-record" className="cursor-pointer">
                 <Video className="size-4" />
-                Quay video cuộc đua
+                {penalty ? "Quay video loạt sút" : "Quay video cuộc đua"}
               </Label>
               <p className="text-muted-foreground text-xs">
                 Đua xong bấm Lưu video để giữ về máy. Video chỉ nằm trên máy bạn, không gửi đi
@@ -552,8 +616,10 @@ export function DinoRace({
       <Button size="lg" className="w-full" disabled={!canStart} onClick={() => start()}>
         {canStart ? <Play className="size-4" /> : <Flag className="size-4" />}
         {canStart
-          ? `Bắt đầu đua · ${names.length} ${racer.label.toLowerCase()} · ${seconds} giây`
-          : `Chọn ít nhất ${RACE_MIN_RUNNERS} người để đua`}
+          ? penalty
+            ? `Bắt đầu đá · ${names.length} ${players}`
+            : `Bắt đầu đua · ${names.length} ${players} · ${seconds} giây`
+          : `Chọn ít nhất ${RACE_MIN_RUNNERS} người để ${penalty ? "đá" : "đua"}`}
       </Button>
     </div>
   );

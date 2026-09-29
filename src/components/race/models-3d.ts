@@ -33,9 +33,22 @@ export type ModelFrames = {
 };
 
 export type PoseMode = "run" | "boost" | "stumble" | "throw" | "slip" | "stand";
-type Pose = { phase: number; mode: PoseMode };
+export type Pose = { phase: number; mode: PoseMode };
 
-type Rig = {
+type Limb = { upper: Three.Group; lower: Three.Group };
+
+/** A human's joints, for scenes that pose it beyond the race's moves. */
+export type HumanParts = {
+  hips: Three.Group;
+  chest: Three.Group;
+  head: Three.Group;
+  /** Right leg first (the rig's +z side), then left. */
+  legs: Limb[];
+  /** Right arm first, then left. */
+  arms: Limb[];
+};
+
+export type Rig = {
   root: Three.Group;
   pose: (pose: Pose) => void;
   /** What the camera frames: centre and half-height, in model units. */
@@ -46,9 +59,10 @@ type Rig = {
   tail: [number, number, number];
   /** Materials painted in the lane colour. */
   tinted: Three.MeshStandardMaterial[];
+  parts?: HumanParts;
 };
 
-function humanRig(THREE: typeof Three): Rig {
+export function humanRig(THREE: typeof Three): Rig & { parts: HumanParts } {
   const mat = (color: string, roughness = 0.65) => new THREE.MeshStandardMaterial({ color, roughness });
   const shirt = mat("#16a34a");
   const skin = mat("#f1c09a");
@@ -248,6 +262,7 @@ function humanRig(THREE: typeof Three): Rig {
     nose: [0.35, 0.95, 0],
     tail: [-0.3, 0.95, 0],
     tinted: [shirt],
+    parts: { hips, chest, head, legs, arms },
   };
 }
 

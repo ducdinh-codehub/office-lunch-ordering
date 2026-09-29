@@ -54,7 +54,7 @@ const SCENE = {
 };
 
 /** One colour per lane, so a runner can be followed through a crowd. */
-const COLORS = [
+export const COLORS = [
   "#16a34a", "#2563eb", "#dc2626", "#9333ea", "#ea580c",
   "#0891b2", "#db2777", "#65a30d", "#4f46e5", "#a16207",
 ];
