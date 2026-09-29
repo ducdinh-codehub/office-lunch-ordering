@@ -153,7 +153,7 @@ export function DinoRace({
     const runners = list.filter((entry) => entry.on).map((entry) => entry.name);
     if (runners.length < RACE_MIN_RUNNERS) return;
     setRoster(list);
-    setPlan(planRace(runners, seconds));
+    setPlan(planRace(runners, seconds, { weapons: RACERS[kind].weapons }));
     setRaceId((id) => id + 1);
     setFilm(record && recordable ? "pending" : "off");
     setPhase("racing");
@@ -186,6 +186,13 @@ export function DinoRace({
 
   if (phase !== "setup" && plan) {
     const ranking = plan.ranking.map((index) => plan.runners[index].name);
+    // How far behind the winner each crossed, which is what makes a close one feel close.
+    const gaps = plan.ranking.map((index) => {
+      const finish = plan.runners[index].finishMs;
+      if (finish === null) return "chưa về đích";
+      const gap = (finish - plan.durationMs) / 1000;
+      return gap === 0 ? `${(plan.durationMs / 1000).toFixed(2)}s` : `+${gap.toFixed(2)}s`;
+    });
     return (
       <div className="space-y-4">
         <Card className="overflow-hidden">
@@ -231,14 +238,34 @@ export function DinoRace({
                   🏆
                 </p>
                 <p className="mt-1 text-xl font-semibold">{ranking[0]} thắng!</p>
+                {plan.photoFinish && (
+                  <p className="text-muted-foreground text-sm">
+                    📸 Sát nút — hơn {ranking[1]} chưa tới{" "}
+                    {((plan.runners[plan.ranking[1]].finishMs! - plan.durationMs) / 1000).toFixed(2)}{" "}
+                    giây!
+                  </p>
+                )}
               </div>
+              {plan.attacks.length > 0 && (
+                <p className="text-muted-foreground text-center text-sm">
+                  🥧 {plan.attacks.filter((a) => a.weapon === "pie" && a.hitMs !== null).length}/
+                  {plan.attacks.filter((a) => a.weapon === "pie").length} bánh kem trúng đích · 🍌{" "}
+                  {plan.attacks.filter((a) => a.weapon === "banana" && a.hitMs !== null && !a.dodged).length} cú trượt
+                  vỏ chuối
+                </p>
+              )}
               <ol className="divide-y rounded-lg border text-sm">
                 {ranking.map((name, place) => (
                   <li key={name} className="flex items-center gap-3 px-3 py-2">
                     <span className="w-6 text-center tabular-nums">
                       {MEDALS[place] ?? `${place + 1}.`}
                     </span>
-                    <span className={place === 0 ? "font-semibold" : undefined}>{name}</span>
+                    <span className={cn("min-w-0 flex-1 truncate", place === 0 && "font-semibold")}>
+                      {name}
+                    </span>
+                    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                      {gaps[place]}
+                    </span>
                   </li>
                 ))}
               </ol>
@@ -331,6 +358,10 @@ export function DinoRace({
                   {option.emoji}
                 </span>
                 {option.label}
+                {option.weapons && (
+                  <span className="text-muted-foreground text-xs font-normal">có vũ khí 🥧🍌</span>
+                )}
+                {option.note && <span className="text-muted-foreground text-xs font-normal">{option.note}</span>}
               </button>
             ))}
           </div>

@@ -11,6 +11,7 @@ import {
   REED,
   type Sprite,
 } from "./pixel-art";
+import type { ModelKind } from "./models-3d";
 
 export type RacerKind = "dino" | "duck" | "human";
 
@@ -26,6 +27,18 @@ export type Racer = {
   stand: Sprite;
   /** Legs on the ground: a shadow and a hop in the stride. A duck floats and bobs instead. */
   grounded: boolean;
+  /**
+   * Raced as a 3D model (`models-3d.ts`), with its height in pixel-art cells so
+   * it sizes with the field; the sprites above are then only the fallback for a
+   * browser without WebGL. Absent for the dino, which is pixel art by design.
+   */
+  model?: { kind: ModelKind; cells: number; /** Nose to tail, as a share of the height. */ length: number };
+  /** Throws pies and drops banana peels (`planRace`'s weapons). */
+  weapons: boolean;
+  /** A line under the choice, when there is something to tell. */
+  note?: string;
+  /** What a stumble is called, and its emoji. */
+  stumble: { emoji: string; text: string };
   scene: {
     skyTop: string;
     skyBottom: string;
@@ -53,6 +66,8 @@ export const RACERS: Record<RacerKind, Racer> = {
     run: [DINO_RUN_A, DINO_RUN_B],
     stand: DINO_STAND,
     grounded: true,
+    weapons: false,
+    stumble: { emoji: "💫", text: "vấp ngã!" },
     scene: {
       skyTop: "#7cc8ee",
       skyBottom: "#d5f0fb",
@@ -75,6 +90,10 @@ export const RACERS: Record<RacerKind, Racer> = {
     run: [DUCK, DUCK],
     stand: DUCK,
     grounded: false,
+    note: "9 kiểu vịt 🎩😎🛟",
+    model: { kind: "duck", cells: 23, length: 1.05 },
+    weapons: false,
+    stumble: { emoji: "🌀", text: "bị cuốn vào xoáy nước!" },
     scene: {
       skyTop: "#8ccfee",
       skyBottom: "#e0f4fb",
@@ -97,6 +116,9 @@ export const RACERS: Record<RacerKind, Racer> = {
     run: [PERSON_RUN_A, PERSON_RUN_B],
     stand: PERSON_STAND,
     grounded: true,
+    model: { kind: "human", cells: 26, length: 0.45 },
+    weapons: true,
+    stumble: { emoji: "💫", text: "vấp ngã!" },
     scene: {
       skyTop: "#7cc0ee",
       skyBottom: "#dcf1fb",
