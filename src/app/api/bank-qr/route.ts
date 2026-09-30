@@ -1,4 +1,4 @@
-import { getAppSettings } from "@/db/queries/settings";
+import { getBankQrImage } from "@/db/queries/settings";
 import { requireUser } from "@/lib/auth/session";
 
 /**
@@ -13,16 +13,14 @@ import { requireUser } from "@/lib/auth/session";
 export async function GET() {
   await requireUser();
 
-  const settings = await getAppSettings();
-  if (!settings.qrImageData || !settings.qrImageType) {
-    return new Response("Not found", { status: 404 });
-  }
+  const image = await getBankQrImage();
+  if (!image) return new Response("Not found", { status: 404 });
 
-  const bytes = Buffer.from(settings.qrImageData, "base64");
+  const bytes = Buffer.from(image.data, "base64");
 
   return new Response(new Uint8Array(bytes), {
     headers: {
-      "Content-Type": settings.qrImageType,
+      "Content-Type": image.type,
       "Content-Length": String(bytes.byteLength),
       // Private: it is the group's bank QR, not something a CDN should hold.
       // `updatedAt` is in the URL as a cache-buster, so this can be long-lived.

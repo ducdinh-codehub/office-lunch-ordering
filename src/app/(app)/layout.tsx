@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         accountName: settings.bankAccountName,
         accountNo: settings.bankAccountNo,
       }
-    : settings.qrImageData
+    : settings.hasQrImage
       ? {
           // The uploaded photo is static, so it carries neither amount nor memo
           // — the details below the QR are how the sender knows what to type.

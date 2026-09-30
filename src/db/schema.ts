@@ -307,6 +307,11 @@ export const appSettings = pgTable("app_settings", {
   luckyEnvelopeEnabled: boolean("lucky_envelope_enabled").notNull().default(false),
   /** Whether the Gym Time promo dialog greets each diner once per sign-in. */
   gymPromoEnabled: boolean("gym_promo_enabled").notNull().default(false),
+  /**
+   * Whether the Gym Time banner sits at the top of the home page. On by
+   * default because the banner was shown unconditionally before this existed.
+   */
+  gymBannerEnabled: boolean("gym_banner_enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

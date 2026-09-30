@@ -391,29 +391,37 @@ export async function resetLuckyEnvelopes(): Promise<ActionResult<number>> {
   }
 }
 
-const gymPromoSchema = z.object({ enabled: z.boolean() });
+const gymPromoSchema = z.object({
+  target: z.enum(["dialog", "banner"]),
+  enabled: z.boolean(),
+});
 
-/** Turns the Gym Time promo dialog shown after sign-in on or off. */
+/**
+ * Turns one Gym Time promo on or off: the dialog shown after sign-in, or the
+ * banner on the home page.
+ */
 export async function setGymPromoEnabled(input: unknown): Promise<ActionResult> {
   try {
     const user = await getCurrentUser();
     if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
     if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
 
-    const { enabled } = gymPromoSchema.parse(input);
+    const { target, enabled } = gymPromoSchema.parse(input);
+    const change = {
+      ...(target === "dialog" ? { gymPromoEnabled: enabled } : { gymBannerEnabled: enabled }),
+      updatedAt: new Date(),
+    };
 
     await db
       .insert(appSettings)
-      .values({ id: SETTINGS_ID, gymPromoEnabled: enabled, updatedAt: new Date() })
-      .onConflictDoUpdate({
-        target: appSettings.id,
-        set: { gymPromoEnabled: enabled, updatedAt: new Date() },
-      });
+      .values({ id: SETTINGS_ID, ...change })
+      .onConflictDoUpdate({ target: appSettings.id, set: change });
 
-    // The dialog is rendered by the (app) layout, so every page under it.
+    // The dialog is rendered by the (app) layout, so every page under it; the
+    // banner by the home page, which that covers too.
     revalidatePath("/", "layout");
     return actionOk();
   } catch (cause) {
-    return toActionError(cause, "Không đổi được thông báo Gym Time.");
+    return toActionError(cause, "Không đổi được cài đặt Gym Time.");
   }
 }

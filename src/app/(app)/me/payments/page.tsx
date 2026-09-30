@@ -36,7 +36,7 @@ export default async function MyPaymentsPage() {
   // The uploaded photo only stands in when VietQR cannot be built — it is static,
   // so it carries neither the amount nor the memo.
   const uploadedQrUrl =
-    !qrUrlBase && settings.qrImageData
+    !qrUrlBase && settings.hasQrImage
       ? `/api/bank-qr?v=${settings.updatedAt.getTime()}`
       : null;
   const memoBase = buildTransferMemo({ email: user.email, displayName: user.displayName });

@@ -89,7 +89,7 @@ export default async function TodayPage({
   return (
     <div className="relative isolate space-y-5">
       <SeasonalBackdrop />
-      <GymTimePromo />
+      {settings.gymBannerEnabled && <GymTimePromo />}
       {/* Always rendered — see LuckyEnvelope for why the reveal needs it. */}
       <LuckyEnvelope eligible={showEnvelope} />
 

@@ -45,7 +45,7 @@ export default async function AdminSettingsPage() {
         bankAccountName={settings.bankAccountName}
         qrTemplate={settings.qrTemplate}
         defaultShipFeeVnd={settings.defaultShipFeeVnd}
-        qrImageStamp={settings.qrImageData ? String(settings.updatedAt.getTime()) : null}
+        qrImageStamp={settings.hasQrImage ? String(settings.updatedAt.getTime()) : null}
       />
 
       <HomeThemePicker homeTheme={parseHomeTheme(settings.homeTheme)} />
@@ -58,7 +58,10 @@ export default async function AdminSettingsPage() {
         byPercent={envelopeStats.byPercent}
       />
 
-      <GymPromoSettings enabled={settings.gymPromoEnabled} />
+      <GymPromoSettings
+        dialogEnabled={settings.gymPromoEnabled}
+        bannerEnabled={settings.gymBannerEnabled}
+      />
 
       <MemberList
         members={members.map((member) => ({
