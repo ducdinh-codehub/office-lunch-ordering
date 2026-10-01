@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, ne, notInArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -138,13 +138,23 @@ export type DailyTotal = {
  *
  * A day with dishes picked but an unfinished set still appears, at 0 ₫: nothing
  * is owed until the set is complete, but the diner should still see their day.
+ *
+ * `excludeMenuDayIds` leaves whole menus out — food, suất and ship alike. The
+ * home banner uses it to count only today's locked menus, whose amount can no
+ * longer move. Anything that charges (a claim, the roster) must not pass it.
  */
 export async function getUserDailyTotals(
   userId: string,
   from: ServiceDate,
   to: ServiceDate,
+  { excludeMenuDayIds = [] }: { excludeMenuDayIds?: string[] } = {},
 ): Promise<DailyTotal[]> {
-  const inRange = and(gte(menuDays.serviceDate, from), lte(menuDays.serviceDate, to));
+  const inRange = and(
+    gte(menuDays.serviceDate, from),
+    lte(menuDays.serviceDate, to),
+    excludeMenuDayIds.length > 0 ? notInArray(menuDays.id, excludeMenuDayIds) : undefined,
+  );
+  const excluded = new Set(excludeMenuDayIds);
 
   const [itemRows, setRows, setPickRows, shipShares, discounts] = await Promise.all([
     db
@@ -233,7 +243,7 @@ export async function getUserDailyTotals(
   }
 
   for (const share of shipShares) {
-    if (share.userId !== userId) continue;
+    if (share.userId !== userId || excluded.has(share.menuDayId)) continue;
     const existing = byDate.get(share.serviceDate);
     if (existing) {
       existing.totalVnd += share.shareVnd;

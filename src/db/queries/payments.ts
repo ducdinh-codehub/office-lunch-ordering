@@ -33,10 +33,11 @@ export async function getUserLedger(
   userId: string,
   from: ServiceDate,
   to: ServiceDate,
+  options?: { excludeMenuDayIds?: string[] },
 ): Promise<DayLedgerEntry[]> {
   // Deliberately the same function the bookings page and a payment claim use, so
   // a day can never be owed one amount here and a different one at checkout.
-  const rows = await getUserDailyTotals(userId, from, to);
+  const rows = await getUserDailyTotals(userId, from, to, options);
 
   const paymentRows = await db
     .select()

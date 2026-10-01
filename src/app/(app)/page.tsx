@@ -32,17 +32,33 @@ export default async function TodayPage({
   const today = todayServiceDate();
   const tomorrow = shiftServiceDate(today, 1);
 
+  // 90 days back is plenty to surface anything still owed.
+  const ledgerFrom = shiftServiceDate(today, -90);
   const [lunchDay, afternoonDay, tomorrowDay, ledger, settings, envelope] = await Promise.all([
     getMenuDay(today),
     getMenuDay(today, "afternoon"),
     getMenuDay(tomorrow),
-    // 90 days back is plenty to surface anything still owed.
-    getUserLedger(user.id, shiftServiceDate(today, -90), today),
+    getUserLedger(user.id, ledgerFrom, today),
     getAppSettings(),
     getUserEnvelope(user.id),
   ]);
 
-  const outstanding = settleableEntries(ledger);
+  // The "Bạn còn nợ" banner waits for the admin to lock one of today's menus:
+  // while they are all still taking orders, today's amount is still moving.
+  // Once one is locked, only locked menus count towards today — locking the
+  // party later adds its dishes to the banner.
+  const todayMenus = [lunchDay, afternoonDay]
+    .filter((menu) => menu !== null)
+    .filter((menu) => menu.status !== "draft");
+  const unlockedToday = todayMenus.filter((menu) => menu.status !== "locked");
+  const showDebtBanner = todayMenus.length === 0 || unlockedToday.length < todayMenus.length;
+  const bannerLedger =
+    showDebtBanner && unlockedToday.length > 0
+      ? await getUserLedger(user.id, ledgerFrom, today, {
+          excludeMenuDayIds: unlockedToday.map((menu) => menu.id),
+        })
+      : ledger;
+  const outstanding = showDebtBanner ? settleableEntries(bannerLedger) : [];
 
   // The lì xì: while the feature is on and theirs is unopened — and not on a
   // day already claimed or paid, whose amount is fixed (the action refuses too).
