@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { cleanSecret, serverEnv } from "@/env";
 import { runDueJobs } from "@/lib/email/runner";
@@ -22,7 +22,15 @@ export async function GET(request: Request) {
   const expected = Buffer.from(serverEnv.cronSecret);
   const given = Buffer.from(/^\s*bearer\s+/i.test(header) ? token : "");
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
-    return new Response("Unauthorized", { status: 401 });
+    // Fingerprints, not secrets: the first 8 hex of each one's SHA-256. They
+    // let whoever is setting this up see *which* value is wrong — the one in
+    // Vercel or the one being sent — without revealing either.
+    const print = (value: Buffer) =>
+      value.length === 0 ? "none" : createHash("sha256").update(value).digest("hex").slice(0, 8);
+    return new Response(
+      `Unauthorized — server expects key ${print(expected)}, request sent key ${print(given)}`,
+      { status: 401 },
+    );
   }
 
   const runs = await runDueJobs();
