@@ -14,6 +14,11 @@ function required(name: string): string {
   return value;
 }
 
+/** A secret without the spaces, line breaks or quotes it was pasted with. */
+export function cleanSecret(value: string): string {
+  return value.trim().replace(/^(["'])([\s\S]*)\1$/, "$2").trim();
+}
+
 function optional(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
@@ -64,8 +69,12 @@ export const serverEnv = {
   get emailRedirectTo() {
     return optional("EMAIL_REDIRECT_TO");
   },
-  /** What cron-job.org sends as `Authorization: Bearer …`. */
+  /**
+   * What cron-job.org sends as `Authorization: Bearer …`. Surrounding spaces
+   * and quotes are dropped: pasted into a dashboard, they are kept as part of
+   * the value and every call is then refused for an invisible reason.
+   */
   get cronSecret() {
-    return required("CRON_SECRET");
+    return cleanSecret(required("CRON_SECRET"));
   },
 } as const;

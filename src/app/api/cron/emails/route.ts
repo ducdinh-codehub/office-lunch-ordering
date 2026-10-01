@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { serverEnv } from "@/env";
+import { cleanSecret, serverEnv } from "@/env";
 import { runDueJobs } from "@/lib/email/runner";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +16,11 @@ export const maxDuration = 60;
  * Calling it more than once is harmless: a run is claimed before it is sent.
  */
 export async function GET(request: Request) {
-  const expected = Buffer.from(`Bearer ${serverEnv.cronSecret}`);
-  const given = Buffer.from(request.headers.get("authorization") ?? "");
+  // "Bearer" in any case, then the secret — tidied the same way as the stored one.
+  const header = request.headers.get("authorization") ?? "";
+  const token = cleanSecret(header.replace(/^\s*bearer\s+/i, ""));
+  const expected = Buffer.from(serverEnv.cronSecret);
+  const given = Buffer.from(/^\s*bearer\s+/i.test(header) ? token : "");
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
     return new Response("Unauthorized", { status: 401 });
   }
