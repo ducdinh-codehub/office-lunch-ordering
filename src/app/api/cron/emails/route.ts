@@ -16,11 +16,15 @@ export const maxDuration = 60;
  * Calling it more than once is harmless: a run is claimed before it is sent.
  */
 export async function GET(request: Request) {
-  // "Bearer" in any case, then the secret — tidied the same way as the stored one.
+  // The secret, however a scheduler's header form was filled in: with or
+  // without "Bearer", or with the whole "Authorization: Bearer …" line pasted
+  // into the value. Tidied the same way as the stored one.
   const header = request.headers.get("authorization") ?? "";
-  const token = cleanSecret(header.replace(/^\s*bearer\s+/i, ""));
+  const token = cleanSecret(
+    header.replace(/^\s*authorization\s*:\s*/i, "").replace(/^\s*bearer\s+/i, ""),
+  );
   const expected = Buffer.from(serverEnv.cronSecret);
-  const given = Buffer.from(/^\s*bearer\s+/i.test(header) ? token : "");
+  const given = Buffer.from(token);
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
     // Fingerprints, not secrets: the first 8 hex of each one's SHA-256. They
     // let whoever is setting this up see *which* value is wrong — the one in
