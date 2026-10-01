@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ClipboardList,
   Flag,
+  Mail,
   ReceiptText,
   Settings2,
   UtensilsCrossed,
@@ -26,6 +27,7 @@ const adminLinks = [
   { href: "/admin/menu", label: "Thực đơn", icon: UtensilsCrossed },
   { href: "/admin/bookings", label: "Đơn hàng", icon: ClipboardList },
   { href: "/admin/payments", label: "Bảng thu", icon: ReceiptText },
+  { href: "/admin/emails", label: "Email", icon: Mail },
   { href: "/admin/settings", label: "Cài đặt", icon: Settings2 },
 ];
 

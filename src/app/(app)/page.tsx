@@ -12,7 +12,12 @@ import { getMenuDay } from "@/db/queries/menu";
 import { getUserBookingsForDay } from "@/db/queries/bookings";
 import { getUserEnvelope } from "@/db/queries/lucky-envelopes";
 import { SLOT_LABEL, resolveActiveSlot } from "@/lib/menu-slot";
-import { getUserLedger, settleableEntries } from "@/db/queries/payments";
+import {
+  DEBT_LOOKBACK_DAYS,
+  getOutstanding,
+  getUserLedger,
+  summarizeOutstanding,
+} from "@/db/queries/payments";
 import { getAppSettings } from "@/db/queries/settings";
 import { greetingIcon, parseHomeTheme } from "@/lib/home-themes";
 import { requireUser } from "@/lib/auth/session";
@@ -32,13 +37,11 @@ export default async function TodayPage({
   const today = todayServiceDate();
   const tomorrow = shiftServiceDate(today, 1);
 
-  // 90 days back is plenty to surface anything still owed.
-  const ledgerFrom = shiftServiceDate(today, -90);
   const [lunchDay, afternoonDay, tomorrowDay, ledger, settings, envelope] = await Promise.all([
     getMenuDay(today),
     getMenuDay(today, "afternoon"),
     getMenuDay(tomorrow),
-    getUserLedger(user.id, ledgerFrom, today),
+    getUserLedger(user.id, shiftServiceDate(today, -DEBT_LOOKBACK_DAYS), today),
     getAppSettings(),
     getUserEnvelope(user.id),
   ]);
@@ -52,20 +55,22 @@ export default async function TodayPage({
     .filter((menu) => menu.status !== "draft");
   const unlockedToday = todayMenus.filter((menu) => menu.status !== "locked");
   const showDebtBanner = todayMenus.length === 0 || unlockedToday.length < todayMenus.length;
-  const bannerLedger =
-    showDebtBanner && unlockedToday.length > 0
-      ? await getUserLedger(user.id, ledgerFrom, today, {
-          excludeMenuDayIds: unlockedToday.map((menu) => menu.id),
-        })
-      : ledger;
-  const outstanding = showDebtBanner ? settleableEntries(bannerLedger) : [];
+  const { entries: outstanding, totalVnd: outstandingTotal } = !showDebtBanner
+    ? { entries: [], totalVnd: 0 }
+    : unlockedToday.length === 0
+      ? // Nothing to leave out: the ledger already fetched is the same answer.
+        summarizeOutstanding(ledger)
+      : await getOutstanding(
+          user.id,
+          today,
+          unlockedToday.map((menu) => menu.id),
+        );
 
   // The lì xì: while the feature is on and theirs is unopened — and not on a
   // day already claimed or paid, whose amount is fixed (the action refuses too).
   const todayEntry = ledger.find((entry) => entry.serviceDate === today);
   const todayPaid = todayEntry?.state === "pending" || todayEntry?.state === "confirmed";
   const showEnvelope = settings.luckyEnvelopeEnabled && envelope === null && !todayPaid;
-  const outstandingTotal = outstanding.reduce((total, entry) => total + entry.owedVnd, 0);
 
   const firstName = (user.displayName ?? user.email.split("@")[0]).split(" ")[0];
   const birthdayToday = isBirthdayOn(toBirthday(user.birthMonth, user.birthDay), today);

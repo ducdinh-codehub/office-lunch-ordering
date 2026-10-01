@@ -1,4 +1,5 @@
 import { BirthdayCard } from "@/components/me/birthday-card";
+import { NoticeEmailsCard } from "@/components/me/notice-emails-card";
 import { ProfileForm } from "@/components/me/profile-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/session";
@@ -27,6 +28,8 @@ export default async function ProfilePage() {
       />
 
       <BirthdayCard birthday={toBirthday(user.birthMonth, user.birthDay)} />
+
+      <NoticeEmailsCard enabled={user.noticeEmailsEnabled} />
 
       <Card>
         <CardHeader>

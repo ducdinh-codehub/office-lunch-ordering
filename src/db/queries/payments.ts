@@ -7,7 +7,7 @@ import { bookings, dayOrders, menuDays, menuItems, payments, users, PAID_CATEGOR
 import { getShipShares, getUserDailyTotals } from "./bookings";
 import { discountKey, getDayDiscounts } from "./day-discounts";
 import { discountPercent, discountVnd } from "@/lib/day-discount";
-import type { ServiceDate } from "@/lib/date";
+import { shiftServiceDate, type ServiceDate } from "@/lib/date";
 
 export type PaymentState = "unpaid" | "pending" | "confirmed" | "rejected";
 
@@ -72,6 +72,38 @@ export function settleableEntries(ledger: DayLedgerEntry[]): DayLedgerEntry[] {
   return ledger.filter(
     (entry) => entry.owedVnd > 0 && (entry.state === "unpaid" || entry.state === "rejected"),
   );
+}
+
+/** How far back the home banner and the billing email look for unpaid days. */
+export const DEBT_LOOKBACK_DAYS = 90;
+
+/**
+ * What a person owes right now, as the home banner and the billing email both
+ * state it: every unpaid day in the lookback, with today counting only menus
+ * that are already locked — a menu still taking orders has an amount that is
+ * still moving. `unlockedTodayIds` are today's menus that are not locked.
+ */
+export async function getOutstanding(
+  userId: string,
+  today: ServiceDate,
+  unlockedTodayIds: string[],
+): Promise<{ entries: DayLedgerEntry[]; totalVnd: number }> {
+  const ledger = await getUserLedger(
+    userId,
+    shiftServiceDate(today, -DEBT_LOOKBACK_DAYS),
+    today,
+    { excludeMenuDayIds: unlockedTodayIds },
+  );
+  return summarizeOutstanding(ledger);
+}
+
+/** The unpaid days of a ledger and their sum. */
+export function summarizeOutstanding(ledger: DayLedgerEntry[]): {
+  entries: DayLedgerEntry[];
+  totalVnd: number;
+} {
+  const entries = settleableEntries(ledger);
+  return { entries, totalVnd: entries.reduce((total, entry) => total + entry.owedVnd, 0) };
 }
 
 export type RosterCell = { owedVnd: number; state: PaymentState };

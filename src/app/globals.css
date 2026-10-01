@@ -935,3 +935,67 @@
     display: none;
   }
 }
+
+/* Email bodies in the editor (/admin/emails). Tailwind's reset strips list
+   bullets and heading sizes; these put back what the email itself will show. */
+.email-content {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+.email-content p {
+  margin: 0 0 0.75em;
+}
+.email-content h2 {
+  margin: 0.75em 0 0.5em;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.email-content h3 {
+  margin: 0.75em 0 0.5em;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.email-content ul,
+.email-content ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+}
+.email-content ul {
+  list-style: disc;
+}
+.email-content ol {
+  list-style: decimal;
+}
+.email-content li p {
+  margin: 0;
+}
+.email-content blockquote {
+  margin: 0 0 0.75em;
+  padding-left: 0.75em;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+.email-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.email-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+.email-content img.ProseMirror-selectednode {
+  outline: 3px solid #2563eb;
+}
+.email-content hr {
+  margin: 1em 0;
+  border-color: var(--border);
+}
+.email-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}

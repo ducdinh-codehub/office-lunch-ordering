@@ -75,3 +75,23 @@ export async function setOwnBirthday(input: unknown): Promise<ActionResult> {
     return toActionError(cause, "Không lưu được ngày sinh.");
   }
 }
+
+const noticeEmailsSchema = z.object({ enabled: z.boolean() });
+
+/**
+ * Turns the signed-in user's notice emails on or off. Billing reminders are
+ * not covered: they are about money owed, not news.
+ */
+export async function setNoticeEmails(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const { enabled } = noticeEmailsSchema.parse(input);
+
+    await db.update(users).set({ noticeEmailsEnabled: enabled }).where(eq(users.id, user.id));
+
+    revalidatePath("/me/profile");
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không lưu được cài đặt email.");
+  }
+}

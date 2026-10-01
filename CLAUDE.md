@@ -244,6 +244,42 @@ Fonts: the Geist CSS variables are on `<html>`, not `<body>`, because `globals.c
 applies `font-sans` at the root. `<ClerkProvider>` wraps `<html>` in the root
 layout.
 
+### Email
+
+`/admin/emails` sends two kinds: **billing** (each person's own unpaid days,
+computed at send time with `getOutstanding()` — the same numbers as the home
+banner, so today's still-open menus are left out) and **notice** (one text to
+everyone; people can turn these off in `/me/profile`, billing they cannot).
+"Gửi ngay" is a job too — it runs the moment it is created — so history has one
+shape. Code is in `src/lib/email/`.
+
+- **Scheduling** is `email_jobs.next_run_at`, woken by cron-job.org calling
+  `GET /api/cron/emails` every 5 minutes with `Authorization: Bearer
+  $CRON_SECRET` (Vercel Hobby cron runs only once a day). Repeating jobs count
+  each occurrence from `first_run_at` (`nextOccurrence()`), so a late call
+  never shifts later runs and missed runs are skipped, not sent in a burst.
+- **No double sends**: a run is claimed by moving `next_run_at` in one update,
+  and each recipient by inserting `email_deliveries` on the unique
+  `(job_id, user_id, run_at)` before sending. Calling the cron twice is safe.
+- **Sending** is SMTP via nodemailer (Gmail app password now; Resend's SMTP
+  later is an env change only). Without `SMTP_HOST`, dev prints emails to the
+  console and production refuses. `EMAIL_REDIRECT_TO` reroutes every email to
+  one address — set it when testing against real colleagues' addresses.
+- **Bodies are HTML** from a Tiptap editor (`email-editor.tsx`), sanitised by
+  `sanitizeEmailHtml()` on save *and* on render — it is the only allowlist, and
+  it lands in inboxes and in the admin's own pages. Pictures are uploaded to
+  `email_images` and linked as `/api/email-images/<id>` (admin-only); at send
+  time `loadInlineImages()` attaches each one inline as `cid:`, so recipients
+  never fetch from the app and pictures work when testing on localhost. Gmail
+  will not show `data:` images, so the editor refuses base64.
+- Every email is framed by two PTPM3 banners (`src/assets/email/logo.png`
+  and `logo-footer.png`, attached as `cid:` like uploaded pictures), each
+  switchable per job (`show_header` / `show_footer`). A banner switched off is
+  not attached either — `prepare()` keeps only the attachments the HTML uses.
+- `/admin/emails/[jobId]` shows a job's content and every delivery.
+  `email_deliveries.subject` keeps what each person got — for billing, their
+  own amount.
+
 ### Payments UX
 
 The QR is VietQR's quicklink image API (`src/lib/vietqr.ts`) — a plain `<img>`, no

@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ClipboardList,
   Flag,
+  Mail,
   ReceiptText,
   Settings2,
   UtensilsCrossed,
@@ -39,6 +40,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/admin/menu": UtensilsCrossed,
   "/admin/bookings": ClipboardList,
   "/admin/payments": ReceiptText,
+  "/admin/emails": Mail,
   "/admin/settings": Settings2,
 };
 

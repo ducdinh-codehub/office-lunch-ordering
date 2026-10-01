@@ -67,6 +67,29 @@ export const paymentStatus = pgEnum("payment_status", [
   "rejected", // admin could not find the transfer
 ]);
 
+/** The two emails the admin can send. See src/lib/email/. */
+export const emailKind = pgEnum("email_kind", [
+  "billing", // Nhắc nợ — each person's own unpaid days, computed when it is sent
+  "notice", // Thông báo — the same text to everyone, e.g. an event
+]);
+
+/** Who an email job goes to. Billing to "everyone" means everyone who owes. */
+export const emailAudience = pgEnum("email_audience", ["everyone", "selected"]);
+
+export const emailRepeat = pgEnum("email_repeat", ["none", "daily", "weekly", "monthly"]);
+
+export const emailJobStatus = pgEnum("email_job_status", [
+  "scheduled", // waiting for `next_run_at`
+  "done", // a one-time job that has run
+  "cancelled",
+]);
+
+export const emailDeliveryStatus = pgEnum("email_delivery_status", [
+  "pending", // claimed, not yet handed to the mail server
+  "sent",
+  "failed",
+]);
+
 /* ────────────────────────────────── users ────────────────────────────────── */
 
 export const users = pgTable(
@@ -83,6 +106,9 @@ export const users = pgTable(
     // may change it. See src/lib/birthday.ts.
     birthMonth: smallint("birth_month"),
     birthDay: smallint("birth_day"),
+    // Notice emails (events) can be turned off by the person. Billing emails
+    // cannot — they are about money the person owes.
+    noticeEmailsEnabled: boolean("notice_emails_enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -346,6 +372,95 @@ export const luckyEnvelopes = pgTable(
   ],
 );
 
+/* ─────────────────────────────────── email ───────────────────────────────── */
+
+/**
+ * One email the admin sent or scheduled. "Send now" is a job too — it runs
+ * the moment it is created — so history has a single shape.
+ *
+ * A repeating job keeps its row and moves `next_run_at` forward after each
+ * run; `first_run_at` is the anchor every occurrence is counted from, so a
+ * monthly job set for the 31st lands on the last day of short months without
+ * drifting to the 28th for ever after.
+ */
+export const emailJobs = pgTable(
+  "email_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: emailKind("kind").notNull(),
+    // Notice: the subject line. Billing: unused — its subject carries each
+    // person's own amount.
+    subject: text("subject").notNull().default(""),
+    // Notice: the message. Billing: an optional note under the amount. HTML
+    // from the editor, sanitised before it is stored (src/lib/email/content.ts).
+    body: text("body").notNull().default(""),
+    audience: emailAudience("audience").notNull(),
+    // Only read when `audience` is `selected`.
+    recipientUserIds: uuid("recipient_user_ids").array().notNull().default(sql`'{}'`),
+    repeat: emailRepeat("repeat").notNull().default("none"),
+    // Whether the PTPM3 banners frame this email, top and bottom.
+    showHeader: boolean("show_header").notNull().default(true),
+    showFooter: boolean("show_footer").notNull().default(true),
+    status: emailJobStatus("status").notNull().default("scheduled"),
+    firstRunAt: timestamp("first_run_at", { withTimezone: true }).notNull(),
+    // Null once the job is done or cancelled.
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("email_jobs_due_idx").on(t.status, t.nextRunAt)],
+);
+
+/**
+ * One email to one person, for one run of a job. The unique key is what stops
+ * a person getting the same run twice — a retried cron call, or two calls
+ * racing, insert the same row and the second one sends nothing.
+ */
+export const emailDeliveries = pgTable(
+  "email_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => emailJobs.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // The address it went to, as it was then.
+    email: text("email").notNull(),
+    // The subject it went out with — for billing, the person's own amount.
+    subject: text("subject").notNull().default(""),
+    // Which occurrence of the job this belongs to — its scheduled instant.
+    runAt: timestamp("run_at", { withTimezone: true }).notNull(),
+    status: emailDeliveryStatus("status").notNull().default("pending"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("email_deliveries_job_user_run_unique").on(t.jobId, t.userId, t.runAt),
+    index("email_deliveries_job_run_idx").on(t.jobId, t.runAt),
+  ],
+);
+
+/**
+ * Pictures placed in an email body. Held as base64 like the bank QR: there is
+ * no storage service, and a few resized photos are small. An email body links
+ * them as `/api/email-images/<id>`; when it is sent each one is attached
+ * inline (cid:), so recipients never fetch them from the app.
+ */
+export const emailImages = pgTable("email_images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  data: text("data").notNull(),
+  type: text("type").notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /* ──────────────────────────────── relations ──────────────────────────────── */
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -393,5 +508,8 @@ export type DayOrder = typeof dayOrders.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type LuckyEnvelope = typeof luckyEnvelopes.$inferSelect;
+export type EmailJob = typeof emailJobs.$inferSelect;
+export type EmailKind = (typeof emailKind.enumValues)[number];
+export type EmailRepeat = (typeof emailRepeat.enumValues)[number];
 export type SetTierKey = (typeof setTier.enumValues)[number];
 export type MenuSlot = (typeof menuSlot.enumValues)[number];
