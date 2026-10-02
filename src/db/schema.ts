@@ -84,6 +84,11 @@ export const emailJobStatus = pgEnum("email_job_status", [
   "cancelled",
 ]);
 
+export const emailRunTrigger = pgEnum("email_run_trigger", [
+  "now", // the admin's "Gửi ngay"
+  "cron", // the timer calling /api/cron/emails
+]);
+
 export const emailDeliveryStatus = pgEnum("email_delivery_status", [
   "pending", // claimed, not yet handed to the mail server
   "sent",
@@ -451,6 +456,36 @@ export const emailDeliveries = pgTable(
  * them as `/api/email-images/<id>`; when it is sent each one is attached
  * inline (cid:), so recipients never fetch them from the app.
  */
+/**
+ * One row per run of a job — the history of what was sent, when, and by
+ * whom. Deliveries alone cannot tell it: a billing run where nobody owed sends
+ * nothing and leaves no delivery, yet it still happened. Written when the run
+ * is claimed, and its counts filled in when it finishes.
+ */
+export const emailRuns = pgTable(
+  "email_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => emailJobs.id, { onDelete: "cascade" }),
+    // The occurrence this run is for — matches `email_deliveries.run_at`.
+    runAt: timestamp("run_at", { withTimezone: true }).notNull(),
+    trigger: emailRunTrigger("trigger").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    // Null while sending, or if the function was cut off mid-run.
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    sent: integer("sent").notNull().default(0),
+    failed: integer("failed").notNull().default(0),
+    // Billing recipients who owed nothing, and anyone already sent this run.
+    skipped: integer("skipped").notNull().default(0),
+  },
+  (t) => [
+    unique("email_runs_job_run_unique").on(t.jobId, t.runAt),
+    index("email_runs_started_idx").on(t.startedAt),
+  ],
+);
+
 export const emailImages = pgTable("email_images", {
   id: uuid("id").primaryKey().defaultRandom(),
   data: text("data").notNull(),
@@ -510,6 +545,7 @@ export type AppSettings = typeof appSettings.$inferSelect;
 export type LuckyEnvelope = typeof luckyEnvelopes.$inferSelect;
 export type EmailJob = typeof emailJobs.$inferSelect;
 export type EmailKind = (typeof emailKind.enumValues)[number];
+export type EmailRunTrigger = (typeof emailRunTrigger.enumValues)[number];
 export type EmailRepeat = (typeof emailRepeat.enumValues)[number];
 export type SetTierKey = (typeof setTier.enumValues)[number];
 export type MenuSlot = (typeof menuSlot.enumValues)[number];

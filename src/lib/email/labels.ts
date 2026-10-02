@@ -1,4 +1,4 @@
-import type { EmailJob } from "@/db/schema";
+import type { EmailJob, EmailRunTrigger } from "@/db/schema";
 
 export const EMAIL_KIND_LABEL: Record<EmailJob["kind"], string> = {
   billing: "Nhắc nợ",
@@ -23,3 +23,8 @@ export function emailAudienceText(
   if (job.audience === "selected") return `${job.recipientUserIds.length} người đã chọn`;
   return job.kind === "billing" ? "mọi người đang nợ" : "tất cả mọi người";
 }
+
+export const EMAIL_TRIGGER_LABEL: Record<EmailRunTrigger, string> = {
+  now: "Gửi ngay",
+  cron: "Tự động",
+};

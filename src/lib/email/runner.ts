@@ -3,13 +3,20 @@ import "server-only";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { emailDeliveries, emailJobs, users, type EmailJob } from "@/db/schema";
+import {
+  emailDeliveries,
+  emailJobs,
+  emailRuns,
+  users,
+  type EmailJob,
+  type EmailRunTrigger,
+} from "@/db/schema";
 import { getMenuDaysForDate } from "@/db/queries/menu";
-import { getOutstanding } from "@/db/queries/payments";
+import { getDebtors, getOutstanding, type Debtor } from "@/db/queries/payments";
 import { serverEnv } from "@/env";
 import { shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
-import { loadInlineImages } from "./content";
+import { loadInlineImages, withPreviewLogo } from "./content";
 import { sendEmail } from "./mailer";
 import { nextOccurrence } from "./schedule";
 import { renderBillingEmail, renderNoticeEmail, type RenderedEmail } from "./templates";
@@ -51,6 +58,12 @@ async function resolveRecipients(job: EmailJob): Promise<Recipient[]> {
     }));
 }
 
+/** Who a billing email can go to right now — the composer's recipient list. */
+export async function currentDebtors(): Promise<Debtor[]> {
+  const today = todayServiceDate();
+  return getDebtors(today, await unlockedTodayIds(today));
+}
+
 /** Today's menus still taking orders — left out of a bill, as on the home banner. */
 async function unlockedTodayIds(today: string): Promise<string[]> {
   const menus = await getMenuDaysForDate(today);
@@ -76,7 +89,13 @@ async function renderFor(
   const { today, unlocked } = billingContext!;
   const { entries, totalVnd } = await getOutstanding(recipient.id, today, unlocked);
   if (totalVnd <= 0) return null;
-  return renderBillingEmail({ name: recipient.name, lines: entries, note: job.body, appUrl, banners });
+  return renderBillingEmail({
+    name: recipient.name,
+    lines: entries,
+    template: job.body,
+    appUrl,
+    banners,
+  });
 }
 
 /**
@@ -86,8 +105,20 @@ async function renderFor(
  * sends nothing. A failure is recorded against that person and the rest
  * carry on.
  */
-async function deliverRun(job: EmailJob, runAt: Date): Promise<RunSummary> {
+async function deliverRun(
+  job: EmailJob,
+  runAt: Date,
+  trigger: EmailRunTrigger,
+): Promise<RunSummary> {
   const summary: RunSummary = { sent: 0, failed: 0, skipped: 0 };
+  // The history row goes in first, so a run cut off mid-way still shows —
+  // without a finish time.
+  const [run] = await db
+    .insert(emailRuns)
+    .values({ jobId: job.id, runAt, trigger })
+    .onConflictDoNothing()
+    .returning({ id: emailRuns.id });
+
   const recipients = await resolveRecipients(job);
 
   const today = todayServiceDate();
@@ -144,6 +175,12 @@ async function deliverRun(job: EmailJob, runAt: Date): Promise<RunSummary> {
       summary.failed += 1;
     }
   }
+  if (run) {
+    await db
+      .update(emailRuns)
+      .set({ ...summary, finishedAt: new Date() })
+      .where(eq(emailRuns.id, run.id));
+  }
   return summary;
 }
 
@@ -179,7 +216,7 @@ export async function runJobNow(jobId: string): Promise<RunSummary | null> {
   const [job] = await db.select().from(emailJobs).where(eq(emailJobs.id, jobId));
   if (!job) return null;
   const runAt = await claimRun(job, new Date());
-  return runAt ? deliverRun(job, runAt) : null;
+  return runAt ? deliverRun(job, runAt, "now") : null;
 }
 
 /**
@@ -204,42 +241,68 @@ export async function runDueJobs(budgetMs = 45_000): Promise<
     if (Date.now() - started > budgetMs) break;
     const runAt = await claimRun(job, now);
     if (!runAt) continue;
-    results.push({ jobId: job.id, runAt: runAt.toISOString(), ...(await deliverRun(job, runAt)) });
+    results.push({ jobId: job.id, runAt: runAt.toISOString(), ...(await deliverRun(job, runAt, "cron")) });
   }
   return results;
+}
+
+/** Two made-up unpaid days, for a billing email shown to someone who owes nothing. */
+export function sampleBillingLines(today: string) {
+  return [
+    { serviceDate: shiftServiceDate(today, -2), owedVnd: 50_000 },
+    { serviceDate: shiftServiceDate(today, -1), owedVnd: 65_000 },
+  ];
+}
+
+/**
+ * The email as it will look for `recipient` — billing with their real debt,
+ * or two sample days when they owe nothing, so the layout can always be seen.
+ */
+async function renderSample(job: JobContent, recipient: Recipient): Promise<RenderedEmail> {
+  const today = todayServiceDate();
+  const email = await renderFor(job, recipient, {
+    today,
+    unlocked: job.kind === "billing" ? await unlockedTodayIds(today) : [],
+  });
+  return (
+    email ??
+    renderBillingEmail({
+      name: recipient.name,
+      lines: sampleBillingLines(today),
+      template: job.body,
+      appUrl: serverEnv.appUrl,
+      banners: { header: job.showHeader, footer: job.showFooter },
+    })
+  );
+}
+
+/**
+ * The composer's live preview: the email for one recipient, as the browser
+ * can show it — banners inlined, uploaded pictures left at their app URL.
+ */
+export async function previewEmail(
+  job: JobContent,
+  recipient: { id: string; email: string; displayName: string | null },
+): Promise<{ subject: string; html: string; name: string }> {
+  const name = recipient.displayName ?? fallbackDisplayName(recipient.email);
+  const email = await renderSample(job, { id: recipient.id, email: recipient.email, name });
+  return { subject: email.subject, html: withPreviewLogo(email.html), name };
 }
 
 /**
  * The admin's "Gửi thử": the email exactly as it will look, sent only to the
  * admin. A billing test uses the admin's own debt, or two sample days when
- * there is none, so the layout can always be checked. Nothing is recorded.
+ * there is none. Nothing is recorded.
  */
 export async function sendTestEmail(
   admin: { id: string; email: string; displayName: string | null },
   job: JobContent,
 ): Promise<void> {
-  const recipient = {
+  const email = await renderSample(job, {
     id: admin.id,
     email: admin.email,
     name: admin.displayName ?? fallbackDisplayName(admin.email),
-  };
-  const today = todayServiceDate();
-  let email = await renderFor(job, recipient, {
-    today,
-    unlocked: job.kind === "billing" ? await unlockedTodayIds(today) : [],
   });
-  if (!email) {
-    email = renderBillingEmail({
-      name: recipient.name,
-      lines: [
-        { serviceDate: shiftServiceDate(today, -2), owedVnd: 50_000 },
-        { serviceDate: shiftServiceDate(today, -1), owedVnd: 65_000 },
-      ],
-      note: job.body,
-      appUrl: serverEnv.appUrl,
-      banners: { header: job.showHeader, footer: job.showFooter },
-    });
-  }
   const images = await loadInlineImages(job.body);
   await sendEmail({
     to: admin.email,

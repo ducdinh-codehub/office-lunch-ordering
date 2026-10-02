@@ -1,9 +1,16 @@
 import "server-only";
 
-import { asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { asc, count, desc, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/db";
-import { emailDeliveries, emailJobs, users, type EmailJob } from "@/db/schema";
+import {
+  emailDeliveries,
+  emailJobs,
+  emailRuns,
+  users,
+  type EmailJob,
+  type EmailRunTrigger,
+} from "@/db/schema";
 import { fallbackDisplayName } from "@/lib/display-name";
 
 /** Everyone who can be picked as a recipient, by name. */
@@ -35,33 +42,63 @@ export async function getScheduledEmailJobs(): Promise<EmailJob[]> {
 }
 
 export type EmailRun = {
+  id: string;
   jobId: string;
   kind: EmailJob["kind"];
   subject: string;
+  trigger: EmailRunTrigger;
+  /** The occurrence it was for — for a timed email, the time it was due. */
   runAt: Date;
+  startedAt: Date;
+  /** Null while sending, or when the run was cut off part-way. */
+  finishedAt: Date | null;
   sent: number;
   failed: number;
   pending: number;
+  skipped: number;
   failures: Array<{ email: string; error: string | null }>;
 };
 
 /**
- * Recent runs, newest first: one entry per run of a job, with how many went
- * out. A run where nobody was emailed (a billing reminder when nobody owed)
- * has no deliveries and so does not appear.
+ * Every run of every job, newest first — "Gửi ngay" and the timer alike,
+ * including runs that emailed nobody (a reminder when nobody owed). Sent,
+ * failed and pending are counted from the deliveries themselves, so a run
+ * still in progress shows where it has got to.
  */
-export async function getRecentEmailRuns(limit = 20): Promise<EmailRun[]> {
-  // Cancelled jobs included: a repeating email stopped later still sent before.
-  const jobs = await db
-    .select()
-    .from(emailJobs)
-    .where(isNotNull(emailJobs.lastRunAt))
-    .orderBy(desc(emailJobs.lastRunAt))
-    .limit(limit);
-  const ran = jobs.filter((job) => job.lastRunAt !== null);
-  if (ran.length === 0) return [];
+export async function getEmailRunHistory({
+  trigger,
+  limit = 20,
+  offset = 0,
+}: {
+  trigger?: EmailRunTrigger;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<{ runs: EmailRun[]; total: number }> {
+  const where = trigger ? eq(emailRuns.trigger, trigger) : undefined;
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select({
+        id: emailRuns.id,
+        jobId: emailRuns.jobId,
+        kind: emailJobs.kind,
+        subject: emailJobs.subject,
+        trigger: emailRuns.trigger,
+        runAt: emailRuns.runAt,
+        startedAt: emailRuns.startedAt,
+        finishedAt: emailRuns.finishedAt,
+        skipped: emailRuns.skipped,
+      })
+      .from(emailRuns)
+      .innerJoin(emailJobs, eq(emailJobs.id, emailRuns.jobId))
+      .where(where)
+      .orderBy(desc(emailRuns.startedAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(emailRuns).where(where),
+  ]);
+  if (rows.length === 0) return { runs: [], total };
 
-  const rows = await db
+  const deliveries = await db
     .select({
       jobId: emailDeliveries.jobId,
       runAt: emailDeliveries.runAt,
@@ -70,39 +107,46 @@ export async function getRecentEmailRuns(limit = 20): Promise<EmailRun[]> {
       error: emailDeliveries.error,
     })
     .from(emailDeliveries)
-    .where(
-      inArray(
-        emailDeliveries.jobId,
-        ran.map((job) => job.id),
-      ),
-    );
+    .where(inArray(emailDeliveries.jobId, [...new Set(rows.map((row) => row.jobId))]));
 
-  const jobById = new Map(ran.map((job) => [job.id, job]));
-  const runs = new Map<string, EmailRun>();
-  for (const row of rows) {
-    const key = `${row.jobId}:${row.runAt.getTime()}`;
-    let run = runs.get(key);
-    if (!run) {
-      const job = jobById.get(row.jobId)!;
-      run = {
-        jobId: row.jobId,
-        kind: job.kind,
-        subject: job.subject,
-        runAt: row.runAt,
-        sent: 0,
-        failed: 0,
-        pending: 0,
-        failures: [],
-      };
-      runs.set(key, run);
+  const runs = rows.map((row): EmailRun => ({
+    ...row,
+    sent: 0,
+    failed: 0,
+    pending: 0,
+    failures: [],
+  }));
+  const byKey = new Map(runs.map((run) => [`${run.jobId}:${run.runAt.getTime()}`, run]));
+  for (const delivery of deliveries) {
+    const run = byKey.get(`${delivery.jobId}:${delivery.runAt.getTime()}`);
+    if (!run) continue;
+    run[delivery.status] += 1;
+    if (delivery.status === "failed") {
+      run.failures.push({ email: delivery.email, error: delivery.error });
     }
-    run[row.status] += 1;
-    if (row.status === "failed") run.failures.push({ email: row.email, error: row.error });
   }
+  return { runs, total };
+}
 
-  return [...runs.values()]
-    .sort((a, b) => b.runAt.getTime() - a.runAt.getTime())
-    .slice(0, limit);
+/**
+ * The people a job was addressed to by name, as they are called now. Anyone
+ * deleted since is simply missing — the job still counts them.
+ */
+export async function getEmailRecipientNames(
+  userIds: string[],
+): Promise<Array<{ id: string; name: string; email: string }>> {
+  if (userIds.length === 0) return [];
+  const rows = await db
+    .select({ id: users.id, displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  return rows
+    .map((row) => ({
+      id: row.id,
+      name: row.displayName ?? fallbackDisplayName(row.email),
+      email: row.email,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "vi"));
 }
 
 export async function getEmailJob(jobId: string): Promise<EmailJob | null> {
@@ -120,10 +164,21 @@ export type EmailDeliveryRow = {
   error: string | null;
 };
 
-/** Every email a job sent, grouped by run, newest run first. */
-export async function getEmailJobRuns(
-  jobId: string,
-): Promise<Array<{ runAt: Date; deliveries: EmailDeliveryRow[] }>> {
+export type EmailJobRun = {
+  runAt: Date;
+  /** Null only for a run with deliveries but no history row. */
+  trigger: EmailRunTrigger | null;
+  skipped: number;
+  finished: boolean;
+  deliveries: EmailDeliveryRow[];
+};
+
+/**
+ * Every run of a job, newest first, with each email it sent. A run that
+ * emailed nobody is still listed — it has a history row and no deliveries.
+ */
+export async function getEmailJobRuns(jobId: string): Promise<EmailJobRun[]> {
+  const history = await db.select().from(emailRuns).where(eq(emailRuns.jobId, jobId));
   const rows = await db
     .select({
       id: emailDeliveries.id,
@@ -139,12 +194,23 @@ export async function getEmailJobRuns(
     .where(eq(emailDeliveries.jobId, jobId))
     .orderBy(desc(emailDeliveries.runAt), asc(users.displayName), asc(emailDeliveries.email));
 
-  const runs = new Map<number, { runAt: Date; deliveries: EmailDeliveryRow[] }>();
+  const runs = new Map<number, EmailJobRun>(
+    history.map((run) => [
+      run.runAt.getTime(),
+      {
+        runAt: run.runAt,
+        trigger: run.trigger,
+        skipped: run.skipped,
+        finished: run.finishedAt !== null,
+        deliveries: [],
+      },
+    ]),
+  );
   for (const row of rows) {
     const key = row.runAt.getTime();
     let run = runs.get(key);
     if (!run) {
-      run = { runAt: row.runAt, deliveries: [] };
+      run = { runAt: row.runAt, trigger: null, skipped: 0, finished: true, deliveries: [] };
       runs.set(key, run);
     }
     run.deliveries.push({
@@ -157,5 +223,5 @@ export async function getEmailJobRuns(
       error: row.error,
     });
   }
-  return [...runs.values()];
+  return [...runs.values()].sort((a, b) => b.runAt.getTime() - a.runAt.getTime());
 }

@@ -10,7 +10,9 @@ import "server-only";
 import { APP_NAME, APP_SHORT_NAME } from "@/lib/app-name";
 import { formatServiceDate, type ServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
+import { DEFAULT_BILLING_TEMPLATE } from "./billing-template";
 import {
+  BILLING_LOGO_SRC,
   FOOTER_LOGO_SRC,
   LOGO_SRC,
   htmlToPlainText,
@@ -41,13 +43,18 @@ function messageHtml(html: string): string {
 export type EmailBanners = { header: boolean; footer: boolean };
 const BOTH: EmailBanners = { header: true, footer: true };
 
-function layout(content: string, footer: string, banners: EmailBanners): string {
+function layout(
+  content: string,
+  footer: string,
+  banners: EmailBanners,
+  headerSrc: string = LOGO_SRC,
+): string {
   return `<!doctype html>
 <html lang="vi">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;padding:24px 12px;background:#f5f5f4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1c1917;font-size:15px;line-height:1.55">
 <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;overflow:hidden">
-${banners.header ? `<img src="${LOGO_SRC}" width="560" height="140" alt="${escapeHtml(APP_SHORT_NAME)} — Strong and unconquered" style="display:block;width:100%;max-width:560px;height:auto;border:0">` : ""}
+${banners.header ? `<img src="${headerSrc}" width="560" height="140" alt="${escapeHtml(APP_SHORT_NAME)} — Strong and unconquered" style="display:block;width:100%;max-width:560px;height:auto;border:0">` : ""}
 <div style="padding:24px">
 ${content}
 </div>
@@ -62,16 +69,24 @@ function button(href: string, label: string): string {
   return `<p style="margin:20px 0 4px"><a href="${escapeHtml(href)}" style="display:inline-block;background:#1c1917;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">${escapeHtml(label)}</a></p>`;
 }
 
+/** A placeholder's whole paragraph, so the table is not nested inside a <p>. */
+const TABLE_PARAGRAPH = /<p\b[^>]*>\s*\{\{bang_ngay_no\}\}\s*<\/p>/g;
+
+/**
+ * One person's billing email: the admin's template (see billing-template.ts)
+ * with that person's figures put in, then the pay button. A template with no
+ * words left falls back to the default rather than sending a bare button.
+ */
 export function renderBillingEmail({
   name,
   lines,
-  note,
+  template,
   appUrl,
   banners = BOTH,
 }: {
   name: string;
   lines: BillingLine[];
-  note: string;
+  template: string;
   appUrl: string;
   banners?: EmailBanners;
 }): RenderedEmail {
@@ -79,6 +94,7 @@ export function renderBillingEmail({
   // Oldest first, the order a person settles them in.
   const sorted = [...lines].sort((a, b) => (a.serviceDate < b.serviceDate ? -1 : 1));
   const payUrl = `${appUrl}/me/payments`;
+  const words = isEmptyEmailHtml(template) ? DEFAULT_BILLING_TEMPLATE : template;
 
   const rows = sorted
     .map(
@@ -86,26 +102,39 @@ export function renderBillingEmail({
         `<tr><td style="padding:6px 0;border-bottom:1px solid #f5f5f4">${escapeHtml(formatServiceDate(line.serviceDate))}</td><td style="padding:6px 0;border-bottom:1px solid #f5f5f4;text-align:right;white-space:nowrap">${formatVnd(line.owedVnd)}</td></tr>`,
     )
     .join("");
+  const table = `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 12px">${rows}
+<tr><td style="padding:10px 0 0;font-weight:600">Tổng cộng</td><td style="padding:10px 0 0;text-align:right;font-weight:600;white-space:nowrap">${formatVnd(total)}</td></tr></table>`;
+
+  // Figures go in after sanitising: the template is the admin's HTML, the
+  // values are ours — the name escaped, the table built here.
+  const fill = (value: string) =>
+    value
+      .replaceAll("{{ten}}", escapeHtml(name))
+      .replaceAll("{{tong_tien}}", formatVnd(total))
+      .replaceAll("{{so_ngay}}", String(sorted.length));
+  const content = fill(messageHtml(words))
+    .replace(TABLE_PARAGRAPH, table)
+    .replaceAll("{{bang_ngay_no}}", table);
 
   const html = layout(
-    `<p style="margin:0 0 12px">Chào ${escapeHtml(name)},</p>
-<p style="margin:0 0 16px">Bạn còn <strong>${formatVnd(total)}</strong> tiền cơm chưa thanh toán, trong ${sorted.length} ngày:</p>
-<table style="width:100%;border-collapse:collapse;font-size:14px">${rows}
-<tr><td style="padding:10px 0 0;font-weight:600">Tổng cộng</td><td style="padding:10px 0 0;text-align:right;font-weight:600;white-space:nowrap">${formatVnd(total)}</td></tr></table>
-${isEmptyEmailHtml(note) ? "" : `<div style="margin-top:16px;padding:12px 12px 0;background:#fafaf9;border-radius:8px">${messageHtml(note)}</div>`}
+    `${content}
 ${button(payUrl, "Thanh toán")}
 <p style="margin:8px 0 0;color:#78716c;font-size:13px">Mã QR ở trang thanh toán đã điền sẵn số tiền và nội dung chuyển khoản.</p>`,
     `Email nhắc thanh toán từ ${escapeHtml(APP_NAME)}. Số tiền tính đến lúc gửi; nếu bạn vừa chuyển khoản, có thể bỏ qua email này.`,
     banners,
+    BILLING_LOGO_SRC,
   );
 
-  const text = [
-    `Chào ${name},`,
-    "",
-    `Bạn còn ${formatVnd(total)} tiền cơm chưa thanh toán, trong ${sorted.length} ngày:`,
+  const tableText = [
     ...sorted.map((line) => `- ${formatServiceDate(line.serviceDate)}: ${formatVnd(line.owedVnd)}`),
     `Tổng cộng: ${formatVnd(total)}`,
-    ...(isEmptyEmailHtml(note) ? [] : ["", htmlToPlainText(note)]),
+  ].join("\n");
+  const text = [
+    htmlToPlainText(words)
+      .replaceAll("{{ten}}", name)
+      .replaceAll("{{tong_tien}}", formatVnd(total))
+      .replaceAll("{{so_ngay}}", String(sorted.length))
+      .replaceAll("{{bang_ngay_no}}", tableText),
     "",
     `Thanh toán: ${payUrl}`,
     "",

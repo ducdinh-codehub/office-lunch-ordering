@@ -5,13 +5,14 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { emailImages, emailJobs } from "@/db/schema";
+import { emailImages, emailJobs, users } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth/session";
 import { localInputToInstant } from "@/lib/date";
 import { EMAIL_IMAGE_PATH, isEmptyEmailHtml, sanitizeEmailHtml } from "@/lib/email/content";
 import { EMAIL_BODY_MAX, EMAIL_IMAGE_MAX_BYTES, SUBJECT_MAX } from "@/lib/email/limits";
 import { sniffImageType } from "@/lib/image-type";
-import { runJobNow, sendTestEmail, type RunSummary } from "@/lib/email/runner";
+import { DEFAULT_BILLING_TEMPLATE } from "@/lib/email/billing-template";
+import { previewEmail, runJobNow, sendTestEmail, type RunSummary } from "@/lib/email/runner";
 import {
   ActionFailure,
   actionOk,
@@ -43,8 +44,9 @@ const messageSchema = z.discriminatedUnion("kind", [
     kind: z.literal("billing"),
     // Billing subjects carry each person's own amount, so none is typed.
     subject: z.string().optional().transform(() => ""),
-    // An empty note is no note — not an empty box in everyone's email.
-    body: bodyField.transform((html) => (isEmptyEmailHtml(html) ? "" : html)),
+    // The whole text, with placeholders for each person's figures. Emptied
+    // out, it goes back to the standard wording rather than a bare button.
+    body: bodyField.transform((html) => (isEmptyEmailHtml(html) ? DEFAULT_BILLING_TEMPLATE : html)),
   }),
 ]);
 
@@ -144,6 +146,51 @@ export async function sendTestEmailToMe(input: unknown): Promise<ActionResult> {
       return { ok: false, error: `Không gửi được: ${cause.message}` };
     }
     return toActionError(cause, "Không gửi được email thử.");
+  }
+}
+
+/**
+ * The composer's live preview: the email as one recipient would get it —
+ * a billing email with that person's real debt. Nothing is sent or stored.
+ */
+export async function previewEmailHtml(
+  input: unknown,
+): Promise<ActionResult<{ subject: string; html: string; name: string }>> {
+  try {
+    const admin = await assertAdmin();
+    const { message, banners, sampleUserId } = z
+      .object({
+        // Unchecked: a preview should show a half-written email too.
+        message: z.object({
+          kind: z.enum(["notice", "billing"]),
+          subject: z.string().max(SUBJECT_MAX).default(""),
+          body: bodyField,
+        }),
+        banners: bannersSchema,
+        sampleUserId: z.string().uuid().nullable().default(null),
+      })
+      .parse(input);
+
+    const [sample] = sampleUserId
+      ? await db
+          .select({ id: users.id, email: users.email, displayName: users.displayName })
+          .from(users)
+          .where(eq(users.id, sampleUserId))
+      : [];
+    const preview = await previewEmail(
+      {
+        kind: message.kind,
+        subject: message.subject,
+        body: message.body,
+        showHeader: banners.header,
+        showFooter: banners.footer,
+      },
+      sample ?? admin,
+    );
+    return actionOk(preview);
+  } catch (cause) {
+    if (cause instanceof z.ZodError) return zodMessage(cause, "Email chưa hợp lệ.");
+    return toActionError(cause, "Không xem trước được email.");
   }
 }
 

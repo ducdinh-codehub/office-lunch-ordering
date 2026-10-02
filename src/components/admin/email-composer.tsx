@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Loader2, Send } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { Loader2, RotateCcw, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createEmailJob, sendTestEmailToMe } from "@/app/(app)/admin/emails/actions";
+import {
+  createEmailJob,
+  previewEmailHtml,
+  sendTestEmailToMe,
+} from "@/app/(app)/admin/emails/actions";
 import { EmailEditor } from "@/components/admin/email-editor";
+import { BILLING_PLACEHOLDERS, DEFAULT_BILLING_TEMPLATE } from "@/lib/email/billing-template";
 import { SUBJECT_MAX } from "@/lib/email/limits";
+import { formatVnd } from "@/lib/money";
 import { REPEAT_LABEL } from "@/lib/email/schedule";
+import type { Debtor } from "@/db/queries/payments";
 import type { EmailKind, EmailRepeat } from "@/db/schema";
 
 export type EmailMember = {
@@ -57,9 +64,12 @@ function audienceItems(kind: EmailKind) {
  */
 export function EmailComposer({
   members,
+  debtors,
   defaultScheduleAt,
 }: {
   members: EmailMember[];
+  /** Who owes right now — the billing tab's recipient list. */
+  debtors: Debtor[];
   /** A `datetime-local` value in Vietnam time — tomorrow morning. */
   defaultScheduleAt: string;
 }) {
@@ -67,8 +77,12 @@ export function EmailComposer({
   const [isPending, startTransition] = useTransition();
   const [kind, setKind] = useState<EmailKind>("billing");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  // Bumped after sending, to start the editor over empty.
+  // Each tab keeps its own text: billing starts from the standard wording.
+  const [bodies, setBodies] = useState<Record<EmailKind, string>>({
+    billing: DEFAULT_BILLING_TEMPLATE,
+    notice: "",
+  });
+  // Bumped to start the editor over from `bodies` — after sending, or a reset.
   const [editorKey, setEditorKey] = useState(0);
   const [banners, setBanners] = useState({ header: true, footer: true });
   const [audience, setAudience] = useState<Audience>("everyone");
@@ -79,7 +93,24 @@ export function EmailComposer({
   const [confirming, setConfirming] = useState(false);
 
   const isBilling = kind === "billing";
+  const body = bodies[kind];
   const message = { kind, subject, body };
+  // Whose figures the preview uses: the first billing recipient ticked, or
+  // the biggest debt when sending to everyone. A notice is the same for all.
+  const sampleUserId = isBilling
+    ? audience === "selected"
+      ? (debtors.find((debtor) => selected.has(debtor.userId))?.userId ?? null)
+      : (debtors[0]?.userId ?? null)
+    : null;
+
+  function setBody(html: string) {
+    setBodies((current) => ({ ...current, [kind]: html }));
+  }
+
+  function resetBillingText() {
+    setBodies((current) => ({ ...current, billing: DEFAULT_BILLING_TEMPLATE }));
+    setEditorKey((key) => key + 1);
+  }
 
   function toggle(id: string) {
     setConfirming(false);
@@ -122,7 +153,10 @@ export function EmailComposer({
         toast.success("Đã lên lịch.");
       }
       setSubject("");
-      setBody("");
+      setBodies((current) => ({
+        ...current,
+        [kind]: kind === "billing" ? DEFAULT_BILLING_TEMPLATE : "",
+      }));
       setEditorKey((key) => key + 1);
       setSelected(new Set());
       router.refresh();
@@ -148,6 +182,9 @@ export function EmailComposer({
             value={kind}
             onValueChange={(value) => {
               setKind(value as EmailKind);
+              // The two tabs pick from different lists; start each from "everyone".
+              setAudience("everyone");
+              setSelected(new Set());
               setConfirming(false);
             }}
           >
@@ -176,14 +213,47 @@ export function EmailComposer({
           </div>
         )}
 
+        {isBilling && (
+          <DebtorPicker
+            debtors={debtors}
+            everyone={audience === "everyone"}
+            selected={selected}
+            onEveryone={(on) => {
+              setConfirming(false);
+              setAudience(on ? "everyone" : "selected");
+              setSelected(new Set());
+            }}
+            onToggle={(id) => {
+              if (audience === "everyone") {
+                // Unticking one person out of "everyone" keeps the rest.
+                setConfirming(false);
+                setAudience("selected");
+                setSelected(new Set(debtors.map((d) => d.userId).filter((other) => other !== id)));
+              } else {
+                toggle(id);
+              }
+            }}
+          />
+        )}
+
         <div className="space-y-1.5">
-          <Label>{isBilling ? "Lời nhắn thêm (tuỳ chọn)" : "Nội dung"}</Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label>Nội dung</Label>
+            {isBilling && body !== DEFAULT_BILLING_TEMPLATE && (
+              <Button variant="ghost" size="sm" onClick={resetBillingText}>
+                <RotateCcw className="size-3.5" />
+                Về nội dung mặc định
+              </Button>
+            )}
+          </div>
           <EmailEditor
-            key={editorKey}
+            key={`${kind}:${editorKey}`}
+            initialHtml={body}
             onChange={setBody}
             placeholder="Viết nội dung email… Có thể dán hoặc kéo ảnh vào đây."
-            minHeight={isBilling ? 100 : 200}
+            minHeight={200}
           />
+          {isBilling && <PlaceholderLegend />}
         </div>
 
         <div className="space-y-2">
@@ -208,54 +278,64 @@ export function EmailComposer({
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label>Người nhận</Label>
-          <Select
-            items={audienceItems(kind)}
-            value={audience}
-            onValueChange={(value) => {
-              setAudience((value ?? "everyone") as Audience);
-              setConfirming(false);
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-72">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {audienceItems(kind).map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <EmailPreview
+          kind={kind}
+          subject={subject}
+          body={body}
+          banners={banners}
+          sampleUserId={sampleUserId}
+        />
 
-          {audience === "selected" && (
-            <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-2">
-              {members.map((member) => {
-                const optedOut = !isBilling && !member.noticeEmailsEnabled;
-                return (
-                  <label
-                    key={member.id}
-                    className="hover:bg-accent/50 flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5"
-                  >
-                    <Checkbox
-                      checked={selected.has(member.id)}
-                      onCheckedChange={() => toggle(member.id)}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{member.name}</span>
-                      <span className="text-muted-foreground block truncate text-xs">
-                        {member.email}
-                        {optedOut && " · đã tắt email thông báo"}
+        {!isBilling && (
+          <div className="space-y-2">
+            <Label>Người nhận</Label>
+            <Select
+              items={audienceItems(kind)}
+              value={audience}
+              onValueChange={(value) => {
+                setAudience((value ?? "everyone") as Audience);
+                setConfirming(false);
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {audienceItems(kind).map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {audience === "selected" && (
+              <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-2">
+                {members.map((member) => {
+                  const optedOut = !isBilling && !member.noticeEmailsEnabled;
+                  return (
+                    <label
+                      key={member.id}
+                      className="hover:bg-accent/50 flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5"
+                    >
+                      <Checkbox
+                        checked={selected.has(member.id)}
+                        onCheckedChange={() => toggle(member.id)}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{member.name}</span>
+                        <span className="text-muted-foreground block truncate text-xs">
+                          {member.email}
+                          {optedOut && " · đã tắt email thông báo"}
+                        </span>
                       </span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="space-y-2">
           <Label>Thời gian gửi</Label>
@@ -350,5 +430,178 @@ export function EmailComposer({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The billing tab's recipients: everyone who owes, with how much. Ticking
+ * "everyone" sends to whoever owes at send time — a scheduled reminder then
+ * reaches people who fall behind later; ticking names sends to those alone.
+ */
+function DebtorPicker({
+  debtors,
+  everyone,
+  selected,
+  onEveryone,
+  onToggle,
+}: {
+  debtors: Debtor[];
+  everyone: boolean;
+  selected: Set<string>;
+  onEveryone: (on: boolean) => void;
+  onToggle: (id: string) => void;
+}) {
+  const total = debtors.reduce((sum, debtor) => sum + debtor.totalVnd, 0);
+  return (
+    <div className="space-y-1.5">
+      <Label>Người chưa thanh toán</Label>
+      {debtors.length === 0 ? (
+        <p className="text-muted-foreground rounded-lg border p-3 text-sm">Không có ai nợ</p>
+      ) : (
+        <div className="rounded-lg border">
+          <label className="bg-muted/40 flex cursor-pointer items-center gap-3 border-b px-3 py-2">
+            <Checkbox
+              checked={everyone}
+              onCheckedChange={(checked) => onEveryone(checked === true)}
+            />
+            <span className="flex-1 text-sm font-medium">
+              Gửi cho tất cả ({debtors.length} người)
+            </span>
+            <span className="text-sm font-semibold tabular-nums">{formatVnd(total)}</span>
+          </label>
+          <ul className="max-h-72 divide-y overflow-y-auto">
+            {debtors.map((debtor) => (
+              <li key={debtor.userId}>
+                <label className="hover:bg-accent/50 flex cursor-pointer items-center gap-3 px-3 py-2">
+                  <Checkbox
+                    checked={everyone || selected.has(debtor.userId)}
+                    onCheckedChange={() => onToggle(debtor.userId)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">{debtor.name}</span>
+                    <span className="text-muted-foreground block truncate text-xs">
+                      {debtor.email}
+                    </span>
+                  </span>
+                  <span className="text-right text-sm tabular-nums">
+                    {formatVnd(debtor.totalVnd)}
+                    <span className="text-muted-foreground block text-xs">
+                      {debtor.days} ngày chưa trả
+                    </span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {debtors.length > 0 && (
+        <p className="text-muted-foreground text-xs">
+          Số liệu lúc mở trang — email tính lại đúng lúc gửi, ai đã trả xong sẽ không nhận.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What each placeholder becomes. Clicking one copies it, to paste where it
+ * should go — each person's own figure replaces it when the email is sent.
+ */
+function PlaceholderLegend() {
+  return (
+    <div className="text-muted-foreground space-y-1.5 text-xs">
+      <p>Từ khoá được thay bằng số liệu của từng người lúc gửi — bấm để chép:</p>
+      <div className="flex flex-wrap gap-1.5">
+        {BILLING_PLACEHOLDERS.map((placeholder) => (
+          <button
+            key={placeholder.token}
+            type="button"
+            className="hover:bg-accent rounded-md border px-2 py-1 text-left"
+            onClick={() => {
+              navigator.clipboard.writeText(placeholder.token).then(
+                () => toast.success(`Đã chép ${placeholder.token}`),
+                () => toast.error("Không chép được — hãy gõ tay."),
+              );
+            }}
+          >
+            <code className="text-foreground font-mono">{placeholder.token}</code>{" "}
+            {placeholder.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The email as it will arrive, banners and all, rendered by the same code
+ * that sends it. Redrawn shortly after typing stops.
+ */
+function EmailPreview({
+  kind,
+  subject,
+  body,
+  banners,
+  sampleUserId,
+}: {
+  kind: EmailKind;
+  subject: string;
+  body: string;
+  banners: { header: boolean; footer: boolean };
+  sampleUserId: string | null;
+}) {
+  const [preview, setPreview] = useState<{ subject: string; html: string; name: string } | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      const result = await previewEmailHtml({
+        message: { kind, subject, body },
+        banners,
+        sampleUserId,
+      });
+      if (cancelled) return;
+      setLoading(false);
+      if (result.ok) {
+        setPreview(result.data!);
+        setError(null);
+      } else {
+        setError(result.error);
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [kind, subject, body, banners, sampleUserId]);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Label>Xem trước</Label>
+        {loading && <Loader2 className="text-muted-foreground size-3.5 animate-spin" />}
+      </div>
+      {preview && (
+        <p className="text-muted-foreground text-xs">
+          {kind === "billing" ? <>Như {preview.name} sẽ nhận · </> : null}
+          Tiêu đề: <span className="text-foreground font-medium">{preview.subject || "—"}</span>
+        </p>
+      )}
+      {error && <p className="text-destructive text-xs">{error}</p>}
+      {/* The email's own HTML, sanitised. No scripts run in the frame;
+          same-origin only so uploaded pictures load for the admin. */}
+      <iframe
+        title="Xem trước email"
+        srcDoc={preview?.html ?? ""}
+        sandbox="allow-same-origin allow-popups"
+        className="bg-muted/30 h-[640px] w-full rounded-lg border"
+      />
+    </div>
   );
 }

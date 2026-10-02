@@ -128,11 +128,18 @@ export function isEmptyEmailHtml(html: string): boolean {
  * border, drawn to match the seal) — rebuild the PNG from both after editing.
  */
 export const LOGO_SRC = "cid:logo@ptpm3";
+/**
+ * The billing email's opening banner: logo.png with its title replaced by
+ * "Payment Reminder" — same frame, seal and underline, the text in the
+ * frame's own font settings at 68px so it clears the seal.
+ */
+export const BILLING_LOGO_SRC = "cid:billing@ptpm3";
 /** The closing banner: the seal alone, centred on the same frame. */
 export const FOOTER_LOGO_SRC = "cid:footer@ptpm3";
 
 const BANNERS = [
   { src: LOGO_SRC, cid: "logo@ptpm3", file: "logo.png" },
+  { src: BILLING_LOGO_SRC, cid: "billing@ptpm3", file: "logo-billing.png" },
   { src: FOOTER_LOGO_SRC, cid: "footer@ptpm3", file: "logo-footer.png" },
 ] as const;
 

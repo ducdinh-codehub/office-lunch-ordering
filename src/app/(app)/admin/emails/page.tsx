@@ -1,16 +1,17 @@
 import Link from "next/link";
 
 import { EmailComposer } from "@/components/admin/email-composer";
+import { EmailRunList } from "@/components/admin/email-run-list";
 import { ScheduledEmails } from "@/components/admin/scheduled-emails";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getEmailMembers, getRecentEmailRuns, getScheduledEmailJobs } from "@/db/queries/emails";
+import { getEmailMembers, getEmailRunHistory, getScheduledEmailJobs } from "@/db/queries/emails";
 import { serverEnv } from "@/env";
 import { pageTitle } from "@/lib/app-name";
 import { requireAdmin } from "@/lib/auth/session";
 import { formatInstant, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { isEmailConfigured } from "@/lib/email/mailer";
 import { EMAIL_KIND_LABEL, emailAudienceText, emailJobTitle } from "@/lib/email/labels";
+import { currentDebtors } from "@/lib/email/runner";
 import { REPEAT_LABEL } from "@/lib/email/schedule";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +19,11 @@ export const metadata = { title: pageTitle("Email") };
 
 export default async function AdminEmailsPage() {
   await requireAdmin();
-  const [members, scheduled, runs] = await Promise.all([
+  const [members, debtors, scheduled, history] = await Promise.all([
     getEmailMembers(),
+    currentDebtors(),
     getScheduledEmailJobs(),
-    getRecentEmailRuns(),
+    getEmailRunHistory({ limit: 10 }),
   ]);
 
   const configured = isEmailConfigured();
@@ -52,6 +54,7 @@ export default async function AdminEmailsPage() {
 
       <EmailComposer
         members={members}
+        debtors={debtors}
         defaultScheduleAt={`${shiftServiceDate(todayServiceDate(), 1)}T08:00`}
       />
 
@@ -74,54 +77,19 @@ export default async function AdminEmailsPage() {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-base">Đã gửi gần đây</CardTitle>
+          {history.total > 0 && (
+            <Link
+              href="/admin/emails/history"
+              className="text-muted-foreground hover:text-foreground text-sm underline-offset-4 hover:underline"
+            >
+              Xem toàn bộ lịch sử ({history.total})
+            </Link>
+          )}
         </CardHeader>
         <CardContent>
-          {runs.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Chưa gửi email nào.</p>
-          ) : (
-            <ul className="divide-y">
-              {runs.map((run) => (
-                <li
-                  key={`${run.jobId}:${run.runAt.getTime()}`}
-                  className="space-y-1 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">{EMAIL_KIND_LABEL[run.kind]}</Badge>
-                    <Link
-                      href={`/admin/emails/${run.jobId}`}
-                      className="min-w-0 flex-1 truncate text-sm font-medium underline-offset-4 hover:underline"
-                    >
-                      {emailJobTitle(run)}
-                    </Link>
-                    <span className="text-muted-foreground text-xs tabular-nums">
-                      {formatInstant(run.runAt)}
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground text-xs">
-                    Đã gửi {run.sent}
-                    {run.pending > 0 && ` · đang gửi ${run.pending}`}
-                    {run.failed > 0 && (
-                      <span className="text-destructive"> · lỗi {run.failed}</span>
-                    )}
-                  </p>
-                  {run.failures.length > 0 && (
-                    <details className="text-xs">
-                      <summary className="text-destructive cursor-pointer">Xem lỗi</summary>
-                      <ul className="mt-1 space-y-0.5">
-                        {run.failures.map((failure) => (
-                          <li key={failure.email} className="text-muted-foreground break-all">
-                            {failure.email}: {failure.error ?? "không rõ"}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+          <EmailRunList runs={history.runs} empty="Chưa gửi email nào." />
         </CardContent>
       </Card>
     </div>

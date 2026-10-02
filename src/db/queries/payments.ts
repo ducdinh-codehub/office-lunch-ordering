@@ -8,6 +8,7 @@ import { getShipShares, getUserDailyTotals } from "./bookings";
 import { discountKey, getDayDiscounts } from "./day-discounts";
 import { discountPercent, discountVnd } from "@/lib/day-discount";
 import { shiftServiceDate, type ServiceDate } from "@/lib/date";
+import { fallbackDisplayName } from "@/lib/display-name";
 
 export type PaymentState = "unpaid" | "pending" | "confirmed" | "rejected";
 
@@ -95,6 +96,37 @@ export async function getOutstanding(
     { excludeMenuDayIds: unlockedTodayIds },
   );
   return summarizeOutstanding(ledger);
+}
+
+export type Debtor = { userId: string; name: string; email: string; totalVnd: number; days: number };
+
+/**
+ * Everyone who owes something right now, largest debt first — who a billing
+ * email can go to. Each amount is `getOutstanding()` itself, so the list never
+ * disagrees with the home banner or the email the person then receives.
+ */
+export async function getDebtors(
+  today: ServiceDate,
+  unlockedTodayIds: string[],
+): Promise<Debtor[]> {
+  const people = await db
+    .select({ id: users.id, displayName: users.displayName, email: users.email })
+    .from(users);
+  const owed = await Promise.all(
+    people.map(async (person) => {
+      const { entries, totalVnd } = await getOutstanding(person.id, today, unlockedTodayIds);
+      return {
+        userId: person.id,
+        name: person.displayName ?? fallbackDisplayName(person.email),
+        email: person.email,
+        totalVnd,
+        days: entries.length,
+      };
+    }),
+  );
+  return owed
+    .filter((debtor) => debtor.totalVnd > 0)
+    .sort((a, b) => b.totalVnd - a.totalVnd || a.name.localeCompare(b.name, "vi"));
 }
 
 /** The unpaid days of a ledger and their sum. */

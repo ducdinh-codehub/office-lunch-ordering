@@ -5,20 +5,22 @@ import { ArrowLeft } from "lucide-react";
 import { CancelEmailButton } from "@/components/admin/scheduled-emails";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getEmailJob, getEmailJobRuns } from "@/db/queries/emails";
+import { getEmailJob, getEmailJobRuns, getEmailRecipientNames } from "@/db/queries/emails";
 import { serverEnv } from "@/env";
 import { pageTitle } from "@/lib/app-name";
 import { requireAdmin } from "@/lib/auth/session";
-import { formatInstant, shiftServiceDate, todayServiceDate } from "@/lib/date";
+import { formatInstant, todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
 import {
   EMAIL_KIND_LABEL,
   EMAIL_STATUS_LABEL,
+  EMAIL_TRIGGER_LABEL,
   emailAudienceText,
   emailJobTitle,
 } from "@/lib/email/labels";
 import { REPEAT_LABEL } from "@/lib/email/schedule";
 import { withPreviewLogo } from "@/lib/email/content";
+import { sampleBillingLines } from "@/lib/email/runner";
 import { renderBillingEmail, renderNoticeEmail } from "@/lib/email/templates";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,8 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
 
   const [job, runs] = await Promise.all([getEmailJob(jobId), getEmailJobRuns(jobId)]);
   if (!job) notFound();
+  const recipients =
+    job.audience === "selected" ? await getEmailRecipientNames(job.recipientUserIds) : [];
 
   // The email as a recipient sees it. A billing email differs per person, so
   // the preview uses two sample days — the note and layout are what matter.
@@ -44,11 +48,8 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
       ? renderNoticeEmail({ subject: job.subject, body: job.body, appUrl: serverEnv.appUrl, banners })
       : renderBillingEmail({
           name,
-          lines: [
-            { serviceDate: shiftServiceDate(today, -2), owedVnd: 50_000 },
-            { serviceDate: shiftServiceDate(today, -1), owedVnd: 65_000 },
-          ],
-          note: job.body,
+          lines: sampleBillingLines(today),
+          template: job.body,
           appUrl: serverEnv.appUrl,
           banners,
         });
@@ -81,7 +82,28 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
 
       <Card>
         <CardContent className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <Detail label="Người nhận">{emailAudienceText(job)}</Detail>
+          <div className="sm:col-span-2">
+            <p className="text-muted-foreground text-xs">Người nhận</p>
+            {recipients.length === 0 ? (
+              <p>{emailAudienceText(job)}</p>
+            ) : (
+              <>
+                <p>{emailAudienceText(job)}:</p>
+                <ul className="mt-1 flex flex-wrap gap-1.5">
+                  {recipients.map((recipient) => (
+                    <li key={recipient.id}>
+                      <Badge variant="outline" className="max-w-full">
+                        <span className="truncate">{recipient.name}</span>
+                        <span className="text-muted-foreground truncate font-normal">
+                          {recipient.email}
+                        </span>
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
           <Detail label="Lặp lại">{REPEAT_LABEL[job.repeat]}</Detail>
           <Detail label="Banner">
             {[job.showHeader && "đầu email", job.showFooter && "cuối email"].filter(Boolean).join(", ") ||
@@ -142,13 +164,28 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
           ) : (
             runs.map((run) => (
               <section key={run.runAt.getTime()} className="space-y-2">
-                <h3 className="text-sm font-medium tabular-nums">
+                <h3 className="flex flex-wrap items-center gap-2 text-sm font-medium tabular-nums">
+                  {run.trigger && (
+                    <Badge variant={run.trigger === "cron" ? "default" : "outline"}>
+                      {EMAIL_TRIGGER_LABEL[run.trigger]}
+                    </Badge>
+                  )}
                   {formatInstant(run.runAt)}
                   <span className="text-muted-foreground font-normal">
-                    {" "}
                     · {run.deliveries.length} người
+                    {run.skipped > 0 &&
+                      ` · bỏ qua ${run.skipped}${job.kind === "billing" ? " (không nợ)" : ""}`}
                   </span>
                 </h3>
+                {run.deliveries.length === 0 ? (
+                  <p className="text-muted-foreground rounded-lg border px-3 py-2 text-sm">
+                    {!run.finished
+                      ? "Đang chạy hoặc bị ngắt giữa chừng — chưa gửi email nào."
+                      : job.kind === "billing"
+                        ? "Không gửi email nào — không ai trong danh sách còn nợ lúc đó."
+                        : "Không gửi email nào — không có người nhận nào lúc đó."}
+                  </p>
+                ) : (
                 <ul className="divide-y rounded-lg border">
                   {run.deliveries.map((delivery) => (
                     <li key={delivery.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2">
@@ -176,6 +213,7 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
                     </li>
                   ))}
                 </ul>
+                )}
               </section>
             ))
           )}
