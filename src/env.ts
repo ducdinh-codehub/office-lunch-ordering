@@ -33,8 +33,20 @@ export const serverEnv = {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
   },
+  /**
+   * Where links in emails point — the Thanh toán button above all. On Vercel
+   * a missing or localhost value (easily copied from a local env file) would
+   * send every recipient to the sender's own laptop, so it falls back to the
+   * project's production domain, which Vercel provides itself.
+   */
   get appUrl() {
-    return optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000");
+    const configured = optional("NEXT_PUBLIC_APP_URL").replace(/\/+$/, "");
+    const onVercel = Boolean(process.env.VERCEL);
+    const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(configured);
+    if (configured && !(onVercel && isLocal)) return configured;
+    const production = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    if (onVercel && production) return `https://${production}`;
+    return configured || "http://localhost:3000";
   },
   get defaultBank() {
     return {

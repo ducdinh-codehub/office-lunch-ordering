@@ -37,6 +37,7 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
   if (!job) notFound();
   const recipients =
     job.audience === "selected" ? await getEmailRecipientNames(job.recipientUserIds) : [];
+  const [creator] = job.createdByUserId ? await getEmailRecipientNames([job.createdByUserId]) : [];
 
   // The email as a recipient sees it. A billing email differs per person, so
   // the preview uses two sample days — the note and layout are what matter.
@@ -108,6 +109,9 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
           <Detail label="Banner">
             {[job.showHeader && "đầu email", job.showFooter && "cuối email"].filter(Boolean).join(", ") ||
               "không có"}
+          </Detail>
+          <Detail label="Tạo bởi">
+            {creator ? `${creator.name} (${creator.email})` : "không rõ"}
           </Detail>
           <Detail label="Tạo lúc">{formatInstant(job.createdAt)}</Detail>
           <Detail label="Gửi lần đầu">{formatInstant(job.firstRunAt)}</Detail>

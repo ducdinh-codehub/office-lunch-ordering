@@ -47,6 +47,8 @@ export type EmailRun = {
   kind: EmailJob["kind"];
   subject: string;
   trigger: EmailRunTrigger;
+  /** Who set the email up — the admin who pressed Gửi ngay or Lên lịch. */
+  createdBy: string | null;
   /** The occurrence it was for — for a timed email, the time it was due. */
   runAt: Date;
   startedAt: Date;
@@ -83,6 +85,8 @@ export async function getEmailRunHistory({
         kind: emailJobs.kind,
         subject: emailJobs.subject,
         trigger: emailRuns.trigger,
+        creatorName: users.displayName,
+        creatorEmail: users.email,
         runAt: emailRuns.runAt,
         startedAt: emailRuns.startedAt,
         finishedAt: emailRuns.finishedAt,
@@ -90,6 +94,7 @@ export async function getEmailRunHistory({
       })
       .from(emailRuns)
       .innerJoin(emailJobs, eq(emailJobs.id, emailRuns.jobId))
+      .leftJoin(users, eq(users.id, emailJobs.createdByUserId))
       .where(where)
       .orderBy(desc(emailRuns.startedAt))
       .limit(limit)
@@ -109,8 +114,9 @@ export async function getEmailRunHistory({
     .from(emailDeliveries)
     .where(inArray(emailDeliveries.jobId, [...new Set(rows.map((row) => row.jobId))]));
 
-  const runs = rows.map((row): EmailRun => ({
+  const runs = rows.map(({ creatorName, creatorEmail, ...row }): EmailRun => ({
     ...row,
+    createdBy: creatorEmail ? (creatorName ?? fallbackDisplayName(creatorEmail)) : null,
     sent: 0,
     failed: 0,
     pending: 0,

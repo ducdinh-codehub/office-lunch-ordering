@@ -38,6 +38,11 @@ export function EmailRunList({ runs, empty }: { runs: EmailRun[]; empty: string 
               </span>
             </div>
             <p className="text-muted-foreground text-xs">
+              {run.createdBy && (
+                <>
+                  {run.trigger === "cron" ? "Hẹn" : "Gửi"} bởi {run.createdBy} ·{" "}
+                </>
+              )}
               {run.trigger === "cron" && <>Hẹn lúc {formatInstant(run.runAt)} · </>}
               Đã gửi {run.sent}
               {run.pending > 0 && ` · đang gửi ${run.pending}`}

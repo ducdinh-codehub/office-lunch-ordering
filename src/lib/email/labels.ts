@@ -26,5 +26,5 @@ export function emailAudienceText(
 
 export const EMAIL_TRIGGER_LABEL: Record<EmailRunTrigger, string> = {
   now: "Gửi ngay",
-  cron: "Tự động",
+  cron: "Hẹn giờ",
 };

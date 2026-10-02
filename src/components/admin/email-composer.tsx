@@ -85,7 +85,9 @@ export function EmailComposer({
   // Bumped to start the editor over from `bodies` — after sending, or a reset.
   const [editorKey, setEditorKey] = useState(0);
   const [banners, setBanners] = useState({ header: true, footer: true });
-  const [audience, setAudience] = useState<Audience>("everyone");
+  // Nobody until chosen: "everyone" is a tick of its own, never a default,
+  // so a test cannot reach the whole office by being left as it was.
+  const [audience, setAudience] = useState<Audience>("selected");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<Mode>("now");
   const [scheduleAt, setScheduleAt] = useState(defaultScheduleAt);
@@ -158,6 +160,7 @@ export function EmailComposer({
         [kind]: kind === "billing" ? DEFAULT_BILLING_TEMPLATE : "",
       }));
       setEditorKey((key) => key + 1);
+      setAudience("selected");
       setSelected(new Set());
       router.refresh();
     });
@@ -167,8 +170,15 @@ export function EmailComposer({
     audience === "selected"
       ? `${selected.size} người đã chọn`
       : isBilling
-        ? "mọi người đang nợ"
-        : "tất cả mọi người";
+        ? `mọi người đang nợ (hiện ${debtors.length} người)`
+        : `tất cả mọi người (${members.filter((member) => member.noticeEmailsEnabled).length} người)`;
+  // Named in the confirmation, so it is plain who is about to get it.
+  const chosenNames =
+    audience === "selected"
+      ? (isBilling
+          ? debtors.filter((debtor) => selected.has(debtor.userId)).map((debtor) => debtor.name)
+          : members.filter((member) => selected.has(member.id)).map((member) => member.name))
+      : [];
 
   return (
     <Card>
@@ -182,8 +192,8 @@ export function EmailComposer({
             value={kind}
             onValueChange={(value) => {
               setKind(value as EmailKind);
-              // The two tabs pick from different lists; start each from "everyone".
-              setAudience("everyone");
+              // The two tabs pick from different lists; each starts with nobody.
+              setAudience("selected");
               setSelected(new Set());
               setConfirming(false);
             }}
@@ -293,7 +303,7 @@ export function EmailComposer({
               items={audienceItems(kind)}
               value={audience}
               onValueChange={(value) => {
-                setAudience((value ?? "everyone") as Audience);
+                setAudience((value ?? "selected") as Audience);
                 setConfirming(false);
               }}
             >
@@ -399,6 +409,18 @@ export function EmailComposer({
               {mode === "schedule" && repeat !== "none" && ` — ${REPEAT_LABEL[repeat].toLowerCase()}`}
               ?
             </p>
+            {chosenNames.length > 0 && (
+              <p className="text-xs text-amber-900 dark:text-amber-200">
+                {chosenNames.slice(0, 8).join(", ")}
+                {chosenNames.length > 8 && ` và ${chosenNames.length - 8} người khác`}
+              </p>
+            )}
+            {audience === "everyone" && mode === "schedule" && (
+              <p className="text-xs text-amber-900 dark:text-amber-200">
+                Người nhận được tính lúc gửi — ai {isBilling ? "nợ" : "tham gia"} sau khi lên lịch
+                cũng sẽ nhận.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               <Button disabled={isPending} onClick={submit}>
                 {isPending && <Loader2 className="size-4 animate-spin" />}

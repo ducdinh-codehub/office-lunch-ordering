@@ -18,7 +18,7 @@ const PAGE_SIZE = 30;
 /** The filter tabs, by the value they put in `?nguon=`. */
 const SOURCES: Array<{ value: string | null; label: string; trigger?: EmailRunTrigger }> = [
   { value: null, label: "Tất cả" },
-  { value: "tu-dong", label: "Tự động (cron)", trigger: "cron" },
+  { value: "hen-gio", label: "Hẹn giờ", trigger: "cron" },
   { value: "gui-ngay", label: "Gửi ngay", trigger: "now" },
 ];
 
@@ -59,7 +59,7 @@ export default async function EmailHistoryPage({
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Lịch sử gửi email</h1>
         <p className="text-muted-foreground text-sm">
-          Mỗi lần một email được gửi — bấm “Gửi ngay” hoặc tự động theo lịch hẹn giờ — kể cả những
+          Mỗi lần một email được gửi — bấm “Gửi ngay”, hoặc đến giờ đã hẹn — kể cả những
           lần không ai cần nhận.
         </p>
       </div>
@@ -86,7 +86,7 @@ export default async function EmailHistoryPage({
           <EmailRunList
             runs={runs}
             empty={
-              source.trigger === "cron" ? "Chưa có lần gửi tự động nào." : "Chưa gửi email nào."
+              source.trigger === "cron" ? "Chưa có email hẹn giờ nào được gửi." : "Chưa gửi email nào."
             }
           />
         </CardContent>
