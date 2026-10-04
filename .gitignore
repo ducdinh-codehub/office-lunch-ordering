@@ -43,6 +43,10 @@ next-env.d.ts
 
 # local dev database (scripts/local-db.sh)
 .localdb/
+
+# database dumps — production data, never commit
+backups/
+*.dump
 .clerk/
 
 # signing keystore (local only)

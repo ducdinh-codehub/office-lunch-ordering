@@ -67,6 +67,12 @@ function seeded(n: number) {
 }
 const pick = <T,>(list: T[], n: number) => list[Math.floor(Math.abs(seeded(n)) * list.length)];
 
+/** The admin accounts (ADMIN_EMAILS), left owing so the debt banner shows. */
+const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+
 const today = todayServiceDate();
 
 // Weekdays only — nobody orders office lunch on a Sunday.
@@ -132,7 +138,7 @@ for (const [dayIndex, serviceDate] of serviceDates.entries()) {
       // late you run this — a cutoff a few hours out expires mid-test. The
       // party below closes at 23:59, after this, as the rule requires.
       orderCutoff: isToday ? localInputToInstant(`${serviceDate}T23:00`) : null,
-      note: "Thực đơn tự chọn CƠM THANH · ĐT đặt món: 097 344 9981",
+      note: "Thực đơn tự chọn · ĐT đặt món: 0900 000 000",
     })
     .returning();
 
@@ -276,7 +282,7 @@ const [pendingDate, rejectedDate] = serviceDates.slice(-4, -2);
 
 let paid = 0;
 for (const person of everyone) {
-  const isAdminAccount = person.email === "dinhduc4work@gmail.com";
+  const isAdminAccount = adminEmails.includes(person.email.toLowerCase());
 
   // The admin account is deliberately left owing, so the "bạn còn nợ" banner
   // and the unpaid cells are visible the moment you open the app.
