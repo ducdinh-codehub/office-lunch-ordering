@@ -69,7 +69,7 @@ const whenSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
-/** Which PTPM3 banners frame the email; both unless switched off. */
+/** Which of the uploaded banners frame the email; both unless switched off. */
 const bannersSchema = z
   .object({ header: z.boolean(), footer: z.boolean() })
   .default({ header: true, footer: true });

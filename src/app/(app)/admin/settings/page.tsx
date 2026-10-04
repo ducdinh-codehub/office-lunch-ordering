@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 
 import { SettingsForm } from "@/components/admin/settings-form";
 import { GreetingEditor } from "@/components/admin/greeting-editor";
+import { EmailBannerSettings } from "@/components/admin/email-banner-settings";
 import { GymPromoSettings } from "@/components/admin/gym-promo-settings";
 import { HomeThemePicker } from "@/components/admin/home-theme-picker";
 import { LuckyEnvelopeSettings } from "@/components/admin/lucky-envelope-settings";
@@ -18,18 +19,21 @@ import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
 import { toBirthday } from "@/lib/birthday";
 import { pageTitle } from "@/lib/app-name";
 import { serverEnv } from "@/env";
+import { getEmailBannerIds } from "@/lib/email/content";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: pageTitle("Cài đặt") };
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [settings, [{ count: bookingCount }], members, envelopeStats] = await Promise.all([
-    getAppSettings(),
-    db.select({ count: sql<number>`count(*)::int` }).from(bookings),
-    getAllMembers(),
-    getEnvelopeStats(),
-  ]);
+  const [settings, [{ count: bookingCount }], members, envelopeStats, bannerIds] =
+    await Promise.all([
+      getAppSettings(),
+      db.select({ count: sql<number>`count(*)::int` }).from(bookings),
+      getAllMembers(),
+      getEnvelopeStats(),
+      getEmailBannerIds(),
+    ]);
 
   return (
     <div className="space-y-5">
@@ -52,6 +56,8 @@ export default async function AdminSettingsPage() {
       <HomeThemePicker homeTheme={parseHomeTheme(settings.homeTheme)} />
 
       <GreetingEditor greetingMessage={settings.greetingMessage} />
+
+      <EmailBannerSettings ids={bannerIds} />
 
       <LuckyEnvelopeSettings
         enabled={settings.luckyEnvelopeEnabled}

@@ -19,7 +19,7 @@ import {
   emailJobTitle,
 } from "@/lib/email/labels";
 import { REPEAT_LABEL } from "@/lib/email/schedule";
-import { withPreviewLogo } from "@/lib/email/content";
+import { emailBanners, getEmailBannerIds } from "@/lib/email/content";
 import { sampleBillingLines } from "@/lib/email/runner";
 import { renderBillingEmail, renderNoticeEmail } from "@/lib/email/templates";
 
@@ -42,7 +42,10 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
   // The email as a recipient sees it. A billing email differs per person, so
   // the preview uses two sample days — the note and layout are what matter.
   const name = admin.displayName ?? fallbackDisplayName(admin.email);
-  const banners = { header: job.showHeader, footer: job.showFooter };
+  const banners = emailBanners(await getEmailBannerIds(), job.kind, {
+    header: job.showHeader,
+    footer: job.showFooter,
+  });
   const today = todayServiceDate();
   const preview =
     job.kind === "notice"
@@ -149,7 +152,7 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
               frame; same-origin only so uploaded pictures load for the admin. */}
           <iframe
             title="Xem trước email"
-            srcDoc={withPreviewLogo(preview.html)}
+            srcDoc={preview.html}
             sandbox="allow-same-origin allow-popups"
             className="h-[560px] w-full rounded-lg border bg-white"
           />

@@ -16,7 +16,7 @@ import { getDebtors, getOutstanding, type Debtor } from "@/db/queries/payments";
 import { serverEnv } from "@/env";
 import { shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
-import { loadInlineImages, withPreviewLogo } from "./content";
+import { emailBanners, getEmailBannerIds, loadInlineImages, type EmailBanners } from "./content";
 import { sendEmail } from "./mailer";
 import { nextOccurrence } from "./schedule";
 import { renderBillingEmail, renderNoticeEmail, type RenderedEmail } from "./templates";
@@ -76,13 +76,21 @@ async function unlockedTodayIds(today: string): Promise<string[]> {
  */
 type JobContent = Pick<EmailJob, "kind" | "subject" | "body" | "showHeader" | "showFooter">;
 
+/** The banners a job's emails carry, from what this deployment uploaded. */
+async function bannersFor(job: JobContent): Promise<EmailBanners> {
+  return emailBanners(await getEmailBannerIds(), job.kind, {
+    header: job.showHeader,
+    footer: job.showFooter,
+  });
+}
+
 async function renderFor(
   job: JobContent,
   recipient: Recipient,
   billingContext: { today: string; unlocked: string[] } | null,
+  banners: EmailBanners,
 ): Promise<RenderedEmail | null> {
   const appUrl = serverEnv.appUrl;
-  const banners = { header: job.showHeader, footer: job.showFooter };
   if (job.kind === "notice") {
     return renderNoticeEmail({ subject: job.subject, body: job.body, appUrl, banners });
   }
@@ -124,11 +132,12 @@ async function deliverRun(
   const today = todayServiceDate();
   const billingContext =
     job.kind === "billing" ? { today, unlocked: await unlockedTodayIds(today) } : null;
-  // The same pictures go to everyone, so they are read once per run.
-  const images = await loadInlineImages(job.body);
+  // The same pictures and banners go to everyone, so they are read once per run.
+  const banners = await bannersFor(job);
+  const images = await loadInlineImages(job.body, banners.header, banners.footer);
 
   for (const recipient of recipients) {
-    const email = await renderFor(job, recipient, billingContext);
+    const email = await renderFor(job, recipient, billingContext, banners);
     if (!email) {
       summary.skipped += 1;
       continue;
@@ -258,12 +267,18 @@ export function sampleBillingLines(today: string) {
  * The email as it will look for `recipient` — billing with their real debt,
  * or two sample days when they owe nothing, so the layout can always be seen.
  */
-async function renderSample(job: JobContent, recipient: Recipient): Promise<RenderedEmail> {
+async function renderSample(
+  job: JobContent,
+  recipient: Recipient,
+  banners: EmailBanners,
+): Promise<RenderedEmail> {
   const today = todayServiceDate();
-  const email = await renderFor(job, recipient, {
-    today,
-    unlocked: job.kind === "billing" ? await unlockedTodayIds(today) : [],
-  });
+  const email = await renderFor(
+    job,
+    recipient,
+    { today, unlocked: job.kind === "billing" ? await unlockedTodayIds(today) : [] },
+    banners,
+  );
   return (
     email ??
     renderBillingEmail({
@@ -271,22 +286,27 @@ async function renderSample(job: JobContent, recipient: Recipient): Promise<Rend
       lines: sampleBillingLines(today),
       template: job.body,
       appUrl: serverEnv.appUrl,
-      banners: { header: job.showHeader, footer: job.showFooter },
+      banners,
     })
   );
 }
 
 /**
  * The composer's live preview: the email for one recipient, as the browser
- * can show it — banners inlined, uploaded pictures left at their app URL.
+ * can show it — banners and uploaded pictures left at their app URL, which
+ * the admin's browser can load.
  */
 export async function previewEmail(
   job: JobContent,
   recipient: { id: string; email: string; displayName: string | null },
 ): Promise<{ subject: string; html: string; name: string }> {
   const name = recipient.displayName ?? fallbackDisplayName(recipient.email);
-  const email = await renderSample(job, { id: recipient.id, email: recipient.email, name });
-  return { subject: email.subject, html: withPreviewLogo(email.html), name };
+  const email = await renderSample(
+    job,
+    { id: recipient.id, email: recipient.email, name },
+    await bannersFor(job),
+  );
+  return { subject: email.subject, html: email.html, name };
 }
 
 /**
@@ -298,12 +318,13 @@ export async function sendTestEmail(
   admin: { id: string; email: string; displayName: string | null },
   job: JobContent,
 ): Promise<void> {
-  const email = await renderSample(job, {
-    id: admin.id,
-    email: admin.email,
-    name: admin.displayName ?? fallbackDisplayName(admin.email),
-  });
-  const images = await loadInlineImages(job.body);
+  const banners = await bannersFor(job);
+  const email = await renderSample(
+    job,
+    { id: admin.id, email: admin.email, name: admin.displayName ?? fallbackDisplayName(admin.email) },
+    banners,
+  );
+  const images = await loadInlineImages(job.body, banners.header, banners.footer);
   await sendEmail({
     to: admin.email,
     ...email,

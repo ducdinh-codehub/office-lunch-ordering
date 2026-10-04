@@ -267,7 +267,7 @@ export function EmailComposer({
         </div>
 
         <div className="space-y-2">
-          <Label>Banner PTPM3</Label>
+          <Label>Banner</Label>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
             {(
               [

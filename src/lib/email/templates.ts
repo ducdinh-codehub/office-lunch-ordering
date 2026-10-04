@@ -12,9 +12,8 @@ import { formatServiceDate, type ServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import { DEFAULT_BILLING_TEMPLATE } from "./billing-template";
 import {
-  BILLING_LOGO_SRC,
-  FOOTER_LOGO_SRC,
-  LOGO_SRC,
+  NO_BANNERS,
+  type EmailBanners,
   htmlToPlainText,
   isEmptyEmailHtml,
   sanitizeEmailHtml,
@@ -39,26 +38,22 @@ function messageHtml(html: string): string {
   return styleForEmail(sanitizeEmailHtml(html));
 }
 
-/** Which PTPM3 banners frame the email. Both by default. */
-export type EmailBanners = { header: boolean; footer: boolean };
-const BOTH: EmailBanners = { header: true, footer: true };
 
 function layout(
   content: string,
   footer: string,
   banners: EmailBanners,
-  headerSrc: string = LOGO_SRC,
 ): string {
   return `<!doctype html>
 <html lang="vi">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;padding:24px 12px;background:#f5f5f4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1c1917;font-size:15px;line-height:1.55">
 <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;overflow:hidden">
-${banners.header ? `<img src="${headerSrc}" width="560" height="140" alt="${escapeHtml(APP_SHORT_NAME)} — Strong and unconquered" style="display:block;width:100%;max-width:560px;height:auto;border:0">` : ""}
+${banners.header ? `<img src="${escapeHtml(banners.header)}" width="560" alt="${escapeHtml(APP_SHORT_NAME)}" style="display:block;width:100%;max-width:560px;height:auto;border:0">` : ""}
 <div style="padding:24px">
 ${content}
 </div>
-${banners.footer ? `<img src="${FOOTER_LOGO_SRC}" width="560" height="140" alt="" style="display:block;width:100%;max-width:560px;height:auto;border:0">` : ""}
+${banners.footer ? `<img src="${escapeHtml(banners.footer)}" width="560" alt="" style="display:block;width:100%;max-width:560px;height:auto;border:0">` : ""}
 </div>
 <p style="max-width:560px;margin:12px auto 0;color:#78716c;font-size:12px;line-height:1.5">${footer}</p>
 </body>
@@ -82,7 +77,7 @@ export function renderBillingEmail({
   lines,
   template,
   appUrl,
-  banners = BOTH,
+  banners = NO_BANNERS,
 }: {
   name: string;
   lines: BillingLine[];
@@ -122,7 +117,6 @@ ${button(payUrl, "Thanh toán")}
 <p style="margin:8px 0 0;color:#78716c;font-size:13px">Mã QR ở trang thanh toán đã điền sẵn số tiền và nội dung chuyển khoản.</p>`,
     `Email nhắc thanh toán từ ${escapeHtml(APP_NAME)}. Số tiền tính đến lúc gửi; nếu bạn vừa chuyển khoản, có thể bỏ qua email này.`,
     banners,
-    BILLING_LOGO_SRC,
   );
 
   const tableText = [
@@ -152,7 +146,7 @@ export function renderNoticeEmail({
   subject,
   body,
   appUrl,
-  banners = BOTH,
+  banners = NO_BANNERS,
 }: {
   subject: string;
   body: string;

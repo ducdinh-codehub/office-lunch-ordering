@@ -272,10 +272,14 @@ shape. Code is in `src/lib/email/`.
   time `loadInlineImages()` attaches each one inline as `cid:`, so recipients
   never fetch from the app and pictures work when testing on localhost. Gmail
   will not show `data:` images, so the editor refuses base64.
-- Every email is framed by two PTPM3 banners (`src/assets/email/logo.png`
-  and `logo-footer.png`, attached as `cid:` like uploaded pictures), each
-  switchable per job (`show_header` / `show_footer`). A banner switched off is
-  not attached either — `prepare()` keeps only the attachments the HTML uses.
+- **Banners are uploaded, never committed.** Each deployment uploads its own
+  header, billing header and footer pictures at `/admin/settings`; they are
+  `email_images` rows that `app_settings` points to, so a fresh clone sends
+  plain emails and no team's branding lives in the repository. Templates link
+  them like any uploaded picture (`emailBanners()`), so they are attached as
+  `cid:` the same way, and each is switchable per job (`show_header` /
+  `show_footer`). A banner switched off or not uploaded is not attached —
+  `prepare()` keeps only the attachments the HTML uses.
 - `/admin/emails/[jobId]` shows a job's content and every delivery.
   `email_deliveries.subject` keeps what each person got — for billing, their
   own amount.

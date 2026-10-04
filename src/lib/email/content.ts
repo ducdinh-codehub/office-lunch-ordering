@@ -1,14 +1,11 @@
 import "server-only";
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { inArray } from "drizzle-orm";
 import { convert } from "html-to-text";
 import sanitizeHtml from "sanitize-html";
 
 import { db } from "@/db";
-import { emailImages } from "@/db/schema";
+import { appSettings, emailImages } from "@/db/schema";
 
 /** Where an uploaded email image is served from, for the editor and previews. */
 export const EMAIL_IMAGE_PATH = "/api/email-images/";
@@ -121,46 +118,43 @@ export function isEmptyEmailHtml(html: string): boolean {
   return htmlToPlainText(html) === "" && !/<img\b/i.test(html);
 }
 
-/**
- * The PTPM3 banner at the top of every email. Templates point at it by cid;
- * every send attaches it, and a preview in the app swaps in a data: URI.
- * It is ptpm3-seal.jpg (the team's seal) placed on logo-frame.svg (the
- * border, drawn to match the seal) — rebuild the PNG from both after editing.
- */
-export const LOGO_SRC = "cid:logo@ptpm3";
-/**
- * The billing email's opening banner: logo.png with its title replaced by
- * "Payment Reminder" — same frame, seal and underline, the text in the
- * frame's own font settings at 68px so it clears the seal.
- */
-export const BILLING_LOGO_SRC = "cid:billing@ptpm3";
-/** The closing banner: the seal alone, centred on the same frame. */
-export const FOOTER_LOGO_SRC = "cid:footer@ptpm3";
+/** The banner pictures a deployment has uploaded at /admin/settings. */
+export type EmailBannerIds = { header: string | null; billing: string | null; footer: string | null };
 
-const BANNERS = [
-  { src: LOGO_SRC, cid: "logo@ptpm3", file: "logo.png" },
-  { src: BILLING_LOGO_SRC, cid: "billing@ptpm3", file: "logo-billing.png" },
-  { src: FOOTER_LOGO_SRC, cid: "footer@ptpm3", file: "logo-footer.png" },
-] as const;
+/** Where each banner of an email points, or null for none. */
+export type EmailBanners = { header: string | null; footer: string | null };
 
-const bannerBytes = new Map<string, Buffer>();
-function readBanner(file: string): Buffer {
-  // Shipped with the cron and admin routes via outputFileTracingIncludes.
-  let bytes = bannerBytes.get(file);
-  if (!bytes) {
-    bytes = readFileSync(path.join(process.cwd(), "src/assets/email", file));
-    bannerBytes.set(file, bytes);
-  }
-  return bytes;
+export const NO_BANNERS: EmailBanners = { header: null, footer: null };
+
+export async function getEmailBannerIds(): Promise<EmailBannerIds> {
+  const [row] = await db
+    .select({
+      header: appSettings.headerBannerImageId,
+      billing: appSettings.billingBannerImageId,
+      footer: appSettings.footerBannerImageId,
+    })
+    .from(appSettings)
+    .limit(1);
+  return row ?? { header: null, billing: null, footer: null };
 }
 
-/** An email's HTML as the browser can show it — for previews inside the app. */
-export function withPreviewLogo(html: string): string {
-  return BANNERS.reduce(
-    (out, banner) =>
-      out.replaceAll(banner.src, `data:image/png;base64,${readBanner(banner.file).toString("base64")}`),
-    html,
-  );
+/**
+ * The banners one email shows: what the job switched on, of what this
+ * deployment uploaded — the repository ships none, so a fresh install sends
+ * plain emails. A billing email opens with its own banner when there is one,
+ * the general one otherwise. They are linked like any uploaded picture, so
+ * sending attaches them inline and previews load them from the app.
+ */
+export function emailBanners(
+  ids: EmailBannerIds,
+  kind: "billing" | "notice",
+  show: { header: boolean; footer: boolean },
+): EmailBanners {
+  const header = kind === "billing" ? (ids.billing ?? ids.header) : ids.header;
+  return {
+    header: show.header && header ? `${EMAIL_IMAGE_PATH}${header}` : null,
+    footer: show.footer && ids.footer ? `${EMAIL_IMAGE_PATH}${ids.footer}` : null,
+  };
 }
 
 export type InlineAttachment = {
@@ -171,50 +165,43 @@ export type InlineAttachment = {
 };
 
 /**
- * Swaps every uploaded image in `html` for an inline attachment. Recipients
- * then see the pictures without their mail client fetching anything from the
- * app — which also means they show when testing on localhost, and are not
- * held back behind "display images".
+ * Swaps every uploaded image for an inline attachment — pictures in the body
+ * and the banners alike. Recipients then see them without their mail client
+ * fetching anything from the app — which also means they show when testing
+ * on localhost, and are not held back behind "display images".
  *
- * The header and footer banners are attached too, when the email shows them.
- * Load once per run, then `prepare` each recipient's rendered email: it gets
- * its `cid:` links and only the attachments it actually uses.
+ * Pass every source of pictures (the body, the banners' links). Load once per
+ * run, then `prepare` each recipient's rendered email: it gets its `cid:`
+ * links and only the attachments it actually uses.
  */
-export async function loadInlineImages(html: string): Promise<{
+export async function loadInlineImages(...sources: Array<string | null>): Promise<{
   prepare: (rendered: string) => { html: string; attachments: InlineAttachment[] };
 }> {
-  const ids = [...html.matchAll(/\/api\/email-images\/([0-9a-f-]{36})/g)].map(
-    (match) => match[1],
-  );
+  const ids = sources
+    .filter((source): source is string => Boolean(source))
+    .flatMap((source) =>
+      [...source.matchAll(/\/api\/email-images\/([0-9a-f-]{36})/g)].map((match) => match[1]),
+    );
   const unique = [...new Set(ids)];
-  const banners: InlineAttachment[] = BANNERS.map((banner) => ({
-    filename: banner.file,
-    content: readBanner(banner.file),
-    contentType: "image/png",
-    cid: banner.cid,
-  }));
   const rows =
     unique.length === 0
       ? []
       : await db.select().from(emailImages).where(inArray(emailImages.id, unique));
-  const attachments = [
-    ...banners,
-    ...rows.map((row) => ({
-      filename: `${row.id}.${row.type.split("/")[1]}`,
-      content: Buffer.from(row.data, "base64"),
-      contentType: row.type,
-      cid: `${row.id}@ptpm3`,
-    })),
-  ];
+  const attachments = rows.map((row) => ({
+    filename: `${row.id}.${row.type.split("/")[1]}`,
+    content: Buffer.from(row.data, "base64"),
+    contentType: row.type,
+    cid: `${row.id}@email`,
+  }));
   const found = new Set(rows.map((row) => row.id));
 
   return {
     prepare: (rendered) => {
       const out = rendered.replace(
         /src="\/api\/email-images\/([0-9a-f-]{36})"/g,
-        (whole, id: string) => (found.has(id) ? `src="cid:${id}@ptpm3"` : whole),
+        (whole, id: string) => (found.has(id) ? `src="cid:${id}@email"` : whole),
       );
-      // A banner switched off is not attached: it would show as a stray file.
+      // Only what this email shows is attached, or it would show as stray files.
       return { html: out, attachments: attachments.filter((a) => out.includes(`cid:${a.cid}`)) };
     },
   };

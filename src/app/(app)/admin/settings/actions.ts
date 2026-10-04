@@ -5,13 +5,22 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { appSettings, bookings, dayOrders, luckyEnvelopes, payments, users } from "@/db/schema";
+import {
+  appSettings,
+  bookings,
+  dayOrders,
+  emailImages,
+  luckyEnvelopes,
+  payments,
+  users,
+} from "@/db/schema";
 import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
 import { birthdayField } from "@/lib/birthday";
 import { sniffImageType } from "@/lib/image-type";
 import { displayNameField } from "@/lib/display-name";
+import { EMAIL_IMAGE_MAX_BYTES } from "@/lib/email/limits";
 import { GREETING_MAX_LENGTH } from "@/lib/greeting";
 import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
@@ -410,5 +419,72 @@ export async function setGymPromoEnabled(input: unknown): Promise<ActionResult> 
     return actionOk();
   } catch (cause) {
     return toActionError(cause, "Không đổi được cài đặt Gym Time.");
+  }
+}
+
+const BANNER_COLUMN = {
+  header: "headerBannerImageId",
+  billing: "billingBannerImageId",
+  footer: "footerBannerImageId",
+} as const;
+const bannerSlot = z.enum(["header", "billing", "footer"]);
+
+/**
+ * Uploads (or replaces) one email banner. Banners are this deployment's own
+ * branding, so they live in the database, never in the repository. The
+ * picture it replaces is kept: emails already sent were rendered with it,
+ * and their job pages still preview it.
+ */
+export async function setEmailBanner(formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const slot = bannerSlot.parse(formData.get("slot"));
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) fail("Hãy chọn một ảnh.");
+    if (file.size > EMAIL_IMAGE_MAX_BYTES) fail("Ảnh quá lớn — tối đa 2 MB.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const type = sniffImageType(bytes);
+    if (!type) fail("Chỉ nhận ảnh PNG, JPG, WEBP hoặc GIF.");
+
+    const [image] = await db
+      .insert(emailImages)
+      .values({ data: Buffer.from(bytes).toString("base64"), type, createdByUserId: user.id })
+      .returning({ id: emailImages.id });
+    const change = { [BANNER_COLUMN[slot]]: image.id, updatedAt: new Date() };
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, ...change })
+      .onConflictDoUpdate({ target: appSettings.id, set: change });
+
+    revalidatePath("/admin/settings");
+    revalidatePath("/admin/emails", "layout");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) return { ok: false, error: "Vị trí banner không hợp lệ." };
+    return toActionError(cause, "Không tải được banner lên.");
+  }
+}
+
+/** Takes one banner off every email from now on. */
+export async function removeEmailBanner(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { slot } = z.object({ slot: bannerSlot }).parse(input);
+    await db
+      .update(appSettings)
+      .set({ [BANNER_COLUMN[slot]]: null, updatedAt: new Date() })
+      .where(eq(appSettings.id, SETTINGS_ID));
+
+    revalidatePath("/admin/settings");
+    revalidatePath("/admin/emails", "layout");
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không gỡ được banner.");
   }
 }

@@ -343,6 +343,21 @@ export const appSettings = pgTable("app_settings", {
    * default because the banner was shown unconditionally before this existed.
    */
   gymBannerEnabled: boolean("gym_banner_enabled").notNull().default(true),
+  /**
+   * The pictures framing every email, uploaded at /admin/settings and stored
+   * as `email_images` rows. They are each deployment's own branding, so the
+   * repository ships none: null means that email has no banner there.
+   * The billing header falls back to the general one when it is not set.
+   */
+  headerBannerImageId: uuid("header_banner_image_id").references(() => emailImages.id, {
+    onDelete: "set null",
+  }),
+  billingBannerImageId: uuid("billing_banner_image_id").references(() => emailImages.id, {
+    onDelete: "set null",
+  }),
+  footerBannerImageId: uuid("footer_banner_image_id").references(() => emailImages.id, {
+    onDelete: "set null",
+  }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -403,7 +418,7 @@ export const emailJobs = pgTable(
     // Only read when `audience` is `selected`.
     recipientUserIds: uuid("recipient_user_ids").array().notNull().default(sql`'{}'`),
     repeat: emailRepeat("repeat").notNull().default("none"),
-    // Whether the PTPM3 banners frame this email, top and bottom.
+    // Whether the uploaded banners frame this email, top and bottom.
     showHeader: boolean("show_header").notNull().default(true),
     showFooter: boolean("show_footer").notNull().default(true),
     status: emailJobStatus("status").notNull().default("scheduled"),
