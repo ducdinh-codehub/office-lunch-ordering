@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Loader2, RotateCcw, Send } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   createEmailJob,
   previewEmailHtml,
@@ -65,11 +67,14 @@ function audienceItems(kind: EmailKind) {
 export function EmailComposer({
   members,
   debtors,
+  uploadedBanners,
   defaultScheduleAt,
 }: {
   members: EmailMember[];
   /** Who owes right now — the billing tab's recipient list. */
   debtors: Debtor[];
+  /** Which banners this deployment has uploaded at /admin/settings. */
+  uploadedBanners: { header: boolean; billing: boolean; footer: boolean };
   /** A `datetime-local` value in Vietnam time — tomorrow morning. */
   defaultScheduleAt: string;
 }) {
@@ -95,6 +100,11 @@ export function EmailComposer({
   const [confirming, setConfirming] = useState(false);
 
   const isBilling = kind === "billing";
+  // A billing email opens with its own banner, or the general one — as sent.
+  const bannerExists = {
+    header: isBilling ? uploadedBanners.billing || uploadedBanners.header : uploadedBanners.header,
+    footer: uploadedBanners.footer,
+  };
   const body = bodies[kind];
   const message = { kind, subject, body };
   // Whose figures the preview uses: the first billing recipient ticked, or
@@ -275,17 +285,34 @@ export function EmailComposer({
                 ["footer", "Banner cuối email"],
               ] as const
             ).map(([key, label]) => (
-              <label key={key} className="flex cursor-pointer items-center gap-2 text-sm">
+              <label
+                key={key}
+                className={cn(
+                  "flex items-center gap-2 text-sm",
+                  bannerExists[key] ? "cursor-pointer" : "text-muted-foreground",
+                )}
+              >
                 <Checkbox
-                  checked={banners[key]}
+                  checked={bannerExists[key] && banners[key]}
+                  disabled={!bannerExists[key]}
                   onCheckedChange={(checked) =>
                     setBanners((current) => ({ ...current, [key]: checked === true }))
                   }
                 />
                 {label}
+                {!bannerExists[key] && <span className="text-xs">(chưa tải lên)</span>}
               </label>
             ))}
           </div>
+          {(!bannerExists.header || !bannerExists.footer) && (
+            <p className="text-muted-foreground text-xs">
+              Banner là ảnh của riêng bạn —{" "}
+              <Link href="/admin/settings" className="underline underline-offset-4">
+                tải lên ở Cài đặt
+              </Link>
+              . Chưa có thì email gửi không có ảnh.
+            </p>
+          )}
         </div>
 
         <EmailPreview
