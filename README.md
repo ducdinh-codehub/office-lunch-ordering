@@ -40,6 +40,15 @@ Then sign up with your admin email → **Thực đơn** → add dishes → open 
 > No Clerk account yet? `npx clerk@latest init --accountless` creates dev keys for you.
 > Every setting is documented in [`.env.local.example`](.env.local.example).
 
+## Make it yours
+
+| What | Where |
+|---|---|
+| App name (header, tabs, emails) | `NEXT_PUBLIC_APP_NAME`, `NEXT_PUBLIC_APP_SHORT_NAME` in `.env.local` — rebuild after changing |
+| Email banners (header, reminder header, footer) | **Cài đặt → Banner email** — uploaded, never committed |
+| Bank account & VietQR style | **Cài đặt** |
+| Who is admin | `ADMIN_EMAILS` in `.env.local` |
+
 ## Deploy (Vercel)
 
 1. Import the repo and copy your env vars into Vercel.

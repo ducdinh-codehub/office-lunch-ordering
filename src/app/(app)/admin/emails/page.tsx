@@ -11,6 +11,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { formatInstant, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { isEmailConfigured } from "@/lib/email/mailer";
 import { EMAIL_KIND_LABEL, emailAudienceText, emailJobTitle } from "@/lib/email/labels";
+import { getEmailBannerIds } from "@/lib/email/content";
 import { currentDebtors } from "@/lib/email/runner";
 import { REPEAT_LABEL } from "@/lib/email/schedule";
 
@@ -19,11 +20,12 @@ export const metadata = { title: pageTitle("Email") };
 
 export default async function AdminEmailsPage() {
   await requireAdmin();
-  const [members, debtors, scheduled, history] = await Promise.all([
+  const [members, debtors, scheduled, history, bannerIds] = await Promise.all([
     getEmailMembers(),
     currentDebtors(),
     getScheduledEmailJobs(),
     getEmailRunHistory({ limit: 10 }),
+    getEmailBannerIds(),
   ]);
 
   const configured = isEmailConfigured();
@@ -55,6 +57,11 @@ export default async function AdminEmailsPage() {
       <EmailComposer
         members={members}
         debtors={debtors}
+        uploadedBanners={{
+          header: Boolean(bannerIds.header),
+          billing: Boolean(bannerIds.billing),
+          footer: Boolean(bannerIds.footer),
+        }}
         defaultScheduleAt={`${shiftServiceDate(todayServiceDate(), 1)}T08:00`}
       />
 
