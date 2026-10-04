@@ -5,13 +5,13 @@ import { useAuth } from "@clerk/nextjs";
 import { ArrowUpRight, Dumbbell } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { GYM_TIME_URL } from "@/components/gym-time-promo";
 
 // Every sign-in mints a new Clerk session id, so keying "seen" on it shows the
 // dialog once per login — not on every navigation or reload in between.
 const SEEN_KEY = "gym-time-promo-seen-session";
 
-export function GymTimePromoDialog() {
+/** Rendered only where `serverEnv.gymTimeUrl` is set — see src/env.ts. */
+export function GymTimePromoDialog({ url }: { url: string }) {
   const { sessionId } = useAuth();
   const [open, setOpen] = useState(false);
 
@@ -44,7 +44,7 @@ export function GymTimePromoDialog() {
         </div>
         <div className="flex flex-col gap-2 sm:flex-row-reverse">
           <a
-            href={GYM_TIME_URL}
+            href={url}
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => setOpen(false)}

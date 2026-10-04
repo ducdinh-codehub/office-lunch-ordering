@@ -15,6 +15,7 @@ import { displayNameField } from "@/lib/display-name";
 import { GREETING_MAX_LENGTH } from "@/lib/greeting";
 import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
+import { serverEnv } from "@/env";
 
 const settingsSchema = z.object({
   // VietQR bank codes are short alphanumeric identifiers, e.g. "VCB", "970436".
@@ -388,6 +389,9 @@ export async function setGymPromoEnabled(input: unknown): Promise<ActionResult> 
     const user = await getCurrentUser();
     if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
     if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    // Not this deployment's to promote — see serverEnv.gymTimeUrl.
+    if (!serverEnv.gymTimeUrl) fail("Gym Time không có trên hệ thống này.");
 
     const { target, enabled } = gymPromoSchema.parse(input);
     const change = {

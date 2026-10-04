@@ -25,6 +25,7 @@ import { BIRTHDAY_PERCENT, isBirthdayOn, toBirthday } from "@/lib/birthday";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import { formatServiceDateShort, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
+import { serverEnv } from "@/env";
 
 export const dynamic = "force-dynamic";
 
@@ -110,7 +111,9 @@ export default async function TodayPage({
   return (
     <div className="relative isolate space-y-5">
       <SeasonalBackdrop />
-      {settings.gymBannerEnabled && <GymTimePromo />}
+      {settings.gymBannerEnabled && serverEnv.gymTimeUrl && (
+        <GymTimePromo url={serverEnv.gymTimeUrl} />
+      )}
       {/* Always rendered — see LuckyEnvelope for why the reveal needs it. */}
       <LuckyEnvelope eligible={showEnvelope} />
 

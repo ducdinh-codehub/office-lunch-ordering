@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { getAppSettings } from "@/db/queries/settings";
 import { requireUser } from "@/lib/auth/session";
 import { buildTransferMemo, buildVietQrUrl, isBankAccountConfigured } from "@/lib/vietqr";
+import { serverEnv } from "@/env";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const [user, settings] = await Promise.all([requireUser(), getAppSettings()]);
@@ -39,10 +40,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         }
       : null;
 
+  const gymTimeUrl = serverEnv.gymTimeUrl;
+
   return (
     <AppShell user={user} donate={donate}>
       {children}
-      {settings.gymPromoEnabled && <GymTimePromoDialog />}
+      {settings.gymPromoEnabled && gymTimeUrl && <GymTimePromoDialog url={gymTimeUrl} />}
     </AppShell>
   );
 }

@@ -89,4 +89,14 @@ export const serverEnv = {
   get cronSecret() {
     return cleanSecret(required("CRON_SECRET"));
   },
+  /**
+   * The owner's own Gym Time site, which this deployment may promote. Private
+   * to that deployment and deliberately absent from .env.local.example: unset
+   * — as in any clone of the repo — Gym Time does not exist at all, no banner,
+   * no dialog, no settings card, and the switch is refused server-side.
+   */
+  get gymTimeUrl(): string | null {
+    const url = optional("GYM_TIME_URL").trim();
+    return /^https:\/\//.test(url) ? url : null;
+  },
 } as const;

@@ -17,6 +17,7 @@ import { fallbackDisplayName } from "@/lib/display-name";
 import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
 import { toBirthday } from "@/lib/birthday";
 import { pageTitle } from "@/lib/app-name";
+import { serverEnv } from "@/env";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: pageTitle("Cài đặt") };
@@ -58,10 +59,12 @@ export default async function AdminSettingsPage() {
         byPercent={envelopeStats.byPercent}
       />
 
-      <GymPromoSettings
-        dialogEnabled={settings.gymPromoEnabled}
-        bannerEnabled={settings.gymBannerEnabled}
-      />
+      {serverEnv.gymTimeUrl && (
+        <GymPromoSettings
+          dialogEnabled={settings.gymPromoEnabled}
+          bannerEnabled={settings.gymBannerEnabled}
+        />
+      )}
 
       <MemberList
         members={members.map((member) => ({

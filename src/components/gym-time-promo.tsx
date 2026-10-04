@@ -1,13 +1,12 @@
 import { ArrowUpRight, Dumbbell } from "lucide-react";
 
-export const GYM_TIME_URL = "https://example.com/";
-
 // Colours are Gym Time's own palette (ink / lime accent / canvas), not this
 // app's theme, so the banner reads as that site in both light and dark mode.
-export function GymTimePromo() {
+/** Rendered only where `serverEnv.gymTimeUrl` is set — see src/env.ts. */
+export function GymTimePromo({ url }: { url: string }) {
   return (
     <a
-      href={GYM_TIME_URL}
+      href={url}
       target="_blank"
       rel="noopener noreferrer"
       className="group flex items-center gap-3 rounded-2xl bg-[#121214] px-4 py-3 text-[#f6f6f3] transition-transform hover:-translate-y-0.5"
