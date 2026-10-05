@@ -127,6 +127,13 @@
       "when": 1791107849976,
       "tag": "0017_silly_whistler",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791176516870,
+      "tag": "0018_admin_discounts",
+      "breakpoints": true
     }
   ]
 }

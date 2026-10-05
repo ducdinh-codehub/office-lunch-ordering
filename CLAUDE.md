@@ -167,14 +167,22 @@ bug, not a style issue.
   member list changes or clears it, because a movable birthday is a discount
   on demand. 29 February is celebrated on the 28th in a common year
   (`src/lib/birthday.ts`).
+- **The admin can give anyone a percentage off chosen dates.**
+  `admin_discounts` holds one row per `(user_id, service_date)` — setting a
+  date again replaces it — with 1–100% and an optional note the diner sees.
+  It is set at `/admin/settings`, one day or a range of up to 31. Days the
+  person already claimed are skipped on a set and refused on a remove: their
+  amount is fixed on the `payments` row. It stacks with the lì xì and the
+  birthday; the sum is capped at 100%, so a day can be free, never negative.
 - **Every discount goes through one lookup and one rounding.**
-  `getDayDiscounts()` returns the lì xì and the birthday per person per date;
-  `discountPercent()` adds them and `discountVnd()` (`src/lib/day-discount.ts`)
-  is the only place the amount is computed — once, on the summed percentage.
+  `getDayDiscounts()` returns the lì xì, the birthday and the admin discount
+  per person per date; `discountPercent()` adds them (capped at 100%) and
+  `discountVnd()` (`src/lib/day-discount.ts`) is the only place the amount is
+  computed — once, on the summed percentage.
   `getUserDailyTotals`, `getUserTotalsForDates`, the roster and the bill export
   all apply it to the *finished* day total (food, suất, ship). Reading
-  `lucky_envelopes` or the birthday columns directly for a total would let one
-  page disagree with what a claim charges.
+  `lucky_envelopes`, `admin_discounts` or the birthday columns directly for a
+  total would let one page disagree with what a claim charges.
 - **Money is integer VND.** No floats, no decimals, anywhere. Booking quantity is
   capped at 99 for that reason alone — `quantity × unit_price_vnd` has to stay
   inside a 32-bit integer. It is not a product limit on how much someone may eat.

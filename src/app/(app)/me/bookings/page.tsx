@@ -87,6 +87,12 @@ export default async function MyBookingsPage() {
                       · 🎂 sinh nhật −{BIRTHDAY_PERCENT}%
                     </span>
                   )}
+                  {day.adminDiscount && (
+                    <span className="text-emerald-700 dark:text-emerald-400">
+                      {" "}
+                      · 🎁 {day.adminDiscount.note ?? "giảm giá"} −{day.adminDiscount.percent}%
+                    </span>
+                  )}
                 </p>
               </div>
               <span className="font-medium tabular-nums">{formatVnd(day.totalVnd)}</span>

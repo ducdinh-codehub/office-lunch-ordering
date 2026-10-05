@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { bookings, dayOrders, menuDays, menuItems, payments, users, PAID_CATEGORIES } from "@/db/schema";
 import { getShipShares, getUserDailyTotals } from "./bookings";
 import { discountKey, getDayDiscounts } from "./day-discounts";
-import { discountPercent, discountVnd } from "@/lib/day-discount";
+import { discountPercent, discountVnd, type AdminDayDiscount } from "@/lib/day-discount";
 import { shiftServiceDate, type ServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
 
@@ -23,6 +23,8 @@ export type DayLedgerEntry = {
   luckyPercent: number | null;
   /** True on their birthday — 10% already taken off `owedVnd`. */
   birthday: boolean;
+  /** What the admin gave them that day, already taken off `owedVnd`. */
+  adminDiscount: AdminDayDiscount | null;
 };
 
 /**
@@ -64,6 +66,7 @@ export async function getUserLedger(
       note: payment?.note ?? null,
       luckyPercent: row.luckyPercent,
       birthday: row.birthday,
+      adminDiscount: row.adminDiscount,
     };
   });
 }
@@ -218,8 +221,8 @@ export async function getPaymentRoster(
     const existing = merged.get(`${share.userId}:${share.serviceDate}`);
     if (existing) existing.owedVnd = Number(existing.owedVnd) + share.shareVnd;
   }
-  // And, on the finished day, anyone's lì xì and birthday — the same rule the
-  // ledger uses.
+  // And, on the finished day, anyone's lì xì, birthday and admin discount —
+  // the same rule the ledger uses.
   const discounts = await getDayDiscounts({ from, to });
   for (const row of merged.values()) {
     const percent = discountPercent(discounts.get(discountKey(row.userId, row.serviceDate)));

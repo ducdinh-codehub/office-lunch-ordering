@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
 import {
+  adminDiscounts,
   appSettings,
   bookings,
   dayOrders,
@@ -18,6 +19,9 @@ import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
 import { birthdayField } from "@/lib/birthday";
+import { isServiceDate, serviceDateRange, type ServiceDate } from "@/lib/date";
+import { ADMIN_DISCOUNT_MAX_DAYS, ADMIN_DISCOUNT_NOTE_MAX } from "@/lib/admin-discount";
+import { MAX_DISCOUNT_PERCENT } from "@/lib/day-discount";
 import { sniffImageType } from "@/lib/image-type";
 import { displayNameField } from "@/lib/display-name";
 import { EMAIL_IMAGE_MAX_BYTES } from "@/lib/email/limits";
@@ -309,8 +313,9 @@ export async function resetOrderHistory(input: unknown): Promise<ActionResult<nu
     await db.delete(payments);
     await db.delete(bookings);
     await db.delete(dayOrders);
-    // The days any lì xì discounted are gone with them.
+    // The days any lì xì or admin discount took money off are gone with them.
     await db.delete(luckyEnvelopes);
+    await db.delete(adminDiscounts);
 
     revalidatePath("/");
     revalidatePath("/admin/settings");
@@ -486,5 +491,138 @@ export async function removeEmailBanner(input: unknown): Promise<ActionResult> {
     return actionOk();
   } catch (cause) {
     return toActionError(cause, "Không gỡ được banner.");
+  }
+}
+
+/** Every page a discount changes an amount on. */
+function revalidateMoneyPages() {
+  revalidatePath("/");
+  revalidatePath("/me/bookings");
+  revalidatePath("/me/payments");
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/settings");
+}
+
+const serviceDateField = z.string().refine(isServiceDate, "Ngày không hợp lệ.");
+
+const adminDiscountSchema = z
+  .object({
+    userId: z.string().uuid("Hãy chọn một người."),
+    from: serviceDateField,
+    to: serviceDateField,
+    percent: z
+      .number()
+      .int("Phần trăm phải là số nguyên.")
+      .min(1, "Giảm ít nhất 1%.")
+      .max(MAX_DISCOUNT_PERCENT, `Giảm nhiều nhất ${MAX_DISCOUNT_PERCENT}%.`),
+    note: z
+      .string()
+      .trim()
+      .max(ADMIN_DISCOUNT_NOTE_MAX, `Ghi chú tối đa ${ADMIN_DISCOUNT_NOTE_MAX} ký tự.`)
+      .transform((note) => note || null),
+  })
+  .refine((v) => v.from <= v.to, { message: "Ngày kết thúc phải sau ngày bắt đầu." });
+
+/** Dates in `dates` this person has already claimed — their amount is fixed. */
+async function claimedDates(userId: string, dates: ServiceDate[]): Promise<Set<ServiceDate>> {
+  if (dates.length === 0) return new Set();
+  const rows = await db
+    .select({ serviceDate: payments.serviceDate })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.userId, userId),
+        inArray(payments.serviceDate, dates),
+        inArray(payments.status, ["pending", "confirmed"]),
+      ),
+    );
+  return new Set(rows.map((row) => row.serviceDate));
+}
+
+export type SetAdminDiscountResult = { saved: number; skipped: ServiceDate[] };
+
+/**
+ * Gives one person a percentage off one date or every date in a range. Setting
+ * a date again replaces its discount. Days they already claimed are skipped,
+ * not refused as a whole: their amount is fixed on the payments row, and a
+ * range should still land on the days it can.
+ */
+export async function setAdminDiscount(
+  input: unknown,
+): Promise<ActionResult<SetAdminDiscountResult>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { userId, from, to, percent, note } = adminDiscountSchema.parse(input);
+    const dates = serviceDateRange(from, to, ADMIN_DISCOUNT_MAX_DAYS + 1);
+    if (dates.length > ADMIN_DISCOUNT_MAX_DAYS) {
+      fail(`Mỗi lần chỉ đặt được tối đa ${ADMIN_DISCOUNT_MAX_DAYS} ngày.`);
+    }
+
+    const [member] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!member) fail("Không tìm thấy người này.");
+
+    const claimed = await claimedDates(userId, dates);
+    const open = dates.filter((date) => !claimed.has(date));
+    if (open.length === 0) {
+      fail(
+        dates.length === 1
+          ? "Người này đã thanh toán ngày đó — số tiền không đổi được nữa."
+          : "Người này đã thanh toán tất cả các ngày đó — số tiền không đổi được nữa.",
+      );
+    }
+
+    await db
+      .insert(adminDiscounts)
+      .values(open.map((serviceDate) => ({ userId, serviceDate, percent, note })))
+      .onConflictDoUpdate({
+        target: [adminDiscounts.userId, adminDiscounts.serviceDate],
+        set: { percent, note, createdAt: new Date() },
+      });
+
+    revalidateMoneyPages();
+    return actionOk({ saved: open.length, skipped: [...claimed].sort() });
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Thông tin giảm giá chưa đúng." };
+    }
+    return toActionError(cause, "Không lưu được giảm giá.");
+  }
+}
+
+/**
+ * Takes one admin discount back. Refused on a claimed day for the same reason
+ * setting one is: the amount on its payments row would no longer match.
+ */
+export async function removeAdminDiscount(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const { id } = z.object({ id: z.string().uuid() }).parse(input);
+
+    const [row] = await db
+      .select({ userId: adminDiscounts.userId, serviceDate: adminDiscounts.serviceDate })
+      .from(adminDiscounts)
+      .where(eq(adminDiscounts.id, id))
+      .limit(1);
+    if (!row) fail("Giảm giá này không còn nữa.");
+
+    const claimed = await claimedDates(row.userId, [row.serviceDate]);
+    if (claimed.size > 0) fail("Người này đã thanh toán ngày đó — số tiền không đổi được nữa.");
+
+    await db.delete(adminDiscounts).where(eq(adminDiscounts.id, id));
+
+    revalidateMoneyPages();
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không xoá được giảm giá.");
   }
 }

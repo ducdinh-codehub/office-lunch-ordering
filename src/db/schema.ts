@@ -392,6 +392,34 @@ export const luckyEnvelopes = pgTable(
   ],
 );
 
+/**
+ * A discount the admin gives one person on one date — a thank-you, a
+ * correction, whatever the note says. It stacks with the lì xì and the
+ * birthday and comes off the finished day total like they do; see
+ * `src/lib/day-discount.ts`. The unique `(user_id, service_date)` is what
+ * makes setting it again replace rather than add. A day already claimed is
+ * refused, because its amount is fixed on the `payments` row.
+ */
+export const adminDiscounts = pgTable(
+  "admin_discounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    serviceDate: date("service_date").notNull(),
+    percent: integer("percent").notNull(),
+    // Shown to the diner beside the discount, e.g. "Thưởng tháng 9".
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("admin_discounts_user_date_unique").on(t.userId, t.serviceDate),
+    index("admin_discounts_date_idx").on(t.serviceDate),
+    check("admin_discounts_percent_check", sql`${t.percent} between 1 and 100`),
+  ],
+);
+
 /* ─────────────────────────────────── email ───────────────────────────────── */
 
 /**
@@ -558,6 +586,7 @@ export type DayOrder = typeof dayOrders.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type LuckyEnvelope = typeof luckyEnvelopes.$inferSelect;
+export type AdminDiscount = typeof adminDiscounts.$inferSelect;
 export type EmailJob = typeof emailJobs.$inferSelect;
 export type EmailKind = (typeof emailKind.enumValues)[number];
 export type EmailRunTrigger = (typeof emailRunTrigger.enumValues)[number];

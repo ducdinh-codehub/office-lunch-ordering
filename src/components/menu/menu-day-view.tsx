@@ -78,13 +78,14 @@ export async function MenuDayView({
     day ? getShipShares({ dates: [serviceDate] }) : [],
     getDayDiscounts({ dates: [serviceDate], userId }),
   ]);
-  // A lì xì opened on this date, and their birthday. Both come off the whole
-  // day's total — lunch and any party together — so this card names them rather
-  // than subtracting its own share, which would round differently from the
-  // amount they are asked to pay.
+  // A lì xì opened on this date, their birthday and the admin's discount. All
+  // come off the whole day's total — lunch and any party together — so this
+  // card names them rather than subtracting its own share, which would round
+  // differently from the amount they are asked to pay.
   const discount = discounts.get(discountKey(userId, serviceDate));
   const luckyPercent = discount?.luckyPercent ?? null;
   const isBirthday = discount?.birthday ?? false;
+  const adminDiscount = discount?.adminDiscount ?? null;
 
   const shipShares = allShipShares.filter((share) => share.menuDayId === day?.id);
   const myShipVnd = shipShares.find((share) => share.userId === userId)?.shareVnd ?? 0;
@@ -364,6 +365,14 @@ export async function MenuDayView({
               <p className="flex items-center justify-between rounded-md bg-pink-50 px-2 py-1 text-xs text-pink-800 dark:bg-pink-950/40 dark:text-pink-200">
                 <span>🎂 Sinh nhật giảm {BIRTHDAY_PERCENT}%</span>
                 <span>trừ khi thanh toán</span>
+              </p>
+            )}
+            {adminDiscount && (
+              <p className="flex items-center justify-between gap-2 rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                <span>
+                  🎁 {adminDiscount.note ?? "Giảm giá"} −{adminDiscount.percent}%
+                </span>
+                <span className="shrink-0">trừ khi thanh toán</span>
               </p>
             )}
           </div>

@@ -4,9 +4,9 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db/index.js";
-import { menuDays, menuItems, users, bookings, payments, dayOrders, luckyEnvelopes } from "../src/db/schema.js";
+import { menuDays, menuItems, users, bookings, payments, dayOrders, luckyEnvelopes, adminDiscounts } from "../src/db/schema.js";
 import { drawLuckyPercent } from "../src/lib/lucky-envelope.js";
-import { discountVnd } from "../src/lib/day-discount.js";
+import { discountPercent, discountVnd } from "../src/lib/day-discount.js";
 import { birthdayField, birthdayInYear, birthdaysBetween, isBirthdayOn } from "../src/lib/birthday.js";
 import { getMenuDay, getMenuDaysForDate } from "../src/db/queries/menu.js";
 import { cutoffOrderError, resolveActiveSlot } from "../src/lib/menu-slot.js";
@@ -70,13 +70,13 @@ check("per-day line totals", aliceD3.map(l => l.lineTotalVnd), [120000, 55000]);
 
 const aliceTotals = await getUserDailyTotals(alice.id, D1, D3);
 check("daily totals (desc)", aliceTotals, [
-  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false },
-  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false },
-  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false },
+  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
+  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
+  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
 ]);
 
 const bobTotals = await getUserDailyTotals(bob.id, D1, D3);
-check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false }]);
+check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null }]);
 
 const kitchen = await getKitchenSummary(byDate.get(D3)!.id);
 check("kitchen headcount", kitchen.map(k => [k.itemName, k.totalQuantity]), [["Phở bò", 3], ["Cơm tấm", 1]]);
@@ -252,7 +252,7 @@ check("a diner's lines are scoped to one menu",
 // 60k + 200k food, plus both delivery fees — Alice is the only diner on each.
 const d5Totals = await getUserDailyTotals(alice.id, D5, D5);
 check("the date bills as one amount", d5Totals, [
-  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, discountVnd: 0, luckyPercent: null, birthday: false },
+  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
 ]);
 // The bug this guards: à-la-carte dishes are not an unfinished suất. A party
 // menu has no suất at all, so nothing on this date is "chưa đủ món".
@@ -417,6 +417,55 @@ await db.delete(luckyEnvelopes);
 await db.update(users).set({ birthMonth: null, birthDay: null }).where(eq(users.id, alice.id));
 check("a cleared birthday restores the full price",
   (await getUserTotalsForDates(alice.id, [D3])).get(D3), bdayAliceBefore);
+
+console.log("\n── giảm giá riêng ──");
+await db.delete(adminDiscounts);
+const giftAliceBefore = (await getUserTotalsForDates(alice.id, [D3])).get(D3)!;
+const giftBobBefore = (await getUserTotalsForDates(bob.id, [D3])).get(D3)!;
+const giftAliceAfter = giftAliceBefore - discountVnd(giftAliceBefore, 15);
+await db.insert(adminDiscounts).values({ userId: alice.id, serviceDate: D3, percent: 15, note: "Thưởng" });
+
+check("claim total is discounted", (await getUserTotalsForDates(alice.id, [D3])).get(D3), giftAliceAfter);
+const giftDay = (await getUserDailyTotals(alice.id, D3, D3))[0];
+check("bookings total names it, note and all",
+  [giftDay.totalVnd, giftDay.adminDiscount, giftDay.discountVnd],
+  [giftAliceAfter, { percent: 15, note: "Thưởng" }, giftAliceBefore - giftAliceAfter]);
+check("ledger owes the discounted amount",
+  (await getUserLedger(alice.id, D3, D3)).map(e => [e.owedVnd, e.adminDiscount?.percent]), [[giftAliceAfter, 15]]);
+check("roster agrees",
+  (await getPaymentRoster(D3, D3)).rows.find(r => r.userId === alice.id)?.cells.get(D3)?.owedVnd, giftAliceAfter);
+check("someone else's day is untouched",
+  (await getUserTotalsForDates(bob.id, [D3])).get(D3), giftBobBefore);
+check("…and so is another date", (await getUserDailyTotals(alice.id, D1, D1))[0]?.adminDiscount ?? null, null);
+
+const secondGift = await db.insert(adminDiscounts)
+  .values({ userId: alice.id, serviceDate: D3, percent: 40, note: null })
+  .onConflictDoUpdate({ target: [adminDiscounts.userId, adminDiscounts.serviceDate], set: { percent: 40, note: null } })
+  .returning();
+check("setting a day again replaces it, not adds", [secondGift.length,
+  (await db.select().from(adminDiscounts).where(eq(adminDiscounts.userId, alice.id))).length], [1, 1]);
+check("…at the new percentage",
+  (await getUserTotalsForDates(alice.id, [D3])).get(D3), giftAliceBefore - discountVnd(giftAliceBefore, 40));
+
+let badGift = false;
+try {
+  await db.insert(adminDiscounts).values({ userId: bob.id, serviceDate: D3, percent: 101 });
+} catch { badGift = true; }
+check("more than 100% cannot be stored", badGift, true);
+
+// 100% plus a lì xì and a birthday still only makes the day free.
+await db.update(adminDiscounts).set({ percent: 100 }).where(eq(adminDiscounts.userId, alice.id));
+await db.insert(luckyEnvelopes).values({ userId: alice.id, serviceDate: D3, percent: 20 });
+await db.update(users).set({ birthMonth: 9, birthDay: 16 }).where(eq(users.id, alice.id));
+check("stacked discounts cap at 100%",
+  discountPercent({ luckyPercent: 20, birthday: true, adminDiscount: { percent: 100, note: null } }), 100);
+check("…so the day is free, never negative", (await getUserTotalsForDates(alice.id, [D3])).get(D3), 0);
+await db.delete(luckyEnvelopes);
+await db.update(users).set({ birthMonth: null, birthDay: null }).where(eq(users.id, alice.id));
+
+await db.delete(adminDiscounts);
+check("a removed discount restores the full price",
+  (await getUserTotalsForDates(alice.id, [D3])).get(D3), giftAliceBefore);
 
 console.log("\n── settings seed from env ──");
 const settings = await getAppSettings();

@@ -15,7 +15,7 @@ import {
   type SetTierKey,
 } from "@/db/schema";
 import { resolveSetTier } from "@/lib/set-tiers";
-import { discountPercent, discountVnd } from "@/lib/day-discount";
+import { discountPercent, discountVnd, type AdminDayDiscount } from "@/lib/day-discount";
 import { discountKey, getDayDiscounts } from "./day-discounts";
 import { splitEvenly } from "@/lib/money";
 import type { ServiceDate } from "@/lib/date";
@@ -118,12 +118,14 @@ export type DailyTotal = {
   shipVnd: number;
   /**
    * What came off, already subtracted from `totalVnd`: their lì xì on the day
-   * they opened it, plus 10% on their birthday — 0 on every other day.
-   * `luckyPercent` is null on a day without a lì xì.
+   * they opened it, plus 10% on their birthday, plus whatever the admin gave
+   * them that day — 0 on every other day. `luckyPercent` is null on a day
+   * without a lì xì, `adminDiscount` on a day without one from the admin.
    */
   discountVnd: number;
   luckyPercent: number | null;
   birthday: boolean;
+  adminDiscount: AdminDayDiscount | null;
 };
 
 /**
@@ -212,6 +214,7 @@ export async function getUserDailyTotals(
       discountVnd: 0,
       luckyPercent: null,
       birthday: false,
+      adminDiscount: null,
     });
   }
   for (const row of setRows) {
@@ -231,6 +234,7 @@ export async function getUserDailyTotals(
         discountVnd: 0,
         luckyPercent: null,
         birthday: false,
+        adminDiscount: null,
       });
     }
   }
@@ -254,13 +258,14 @@ export async function getUserDailyTotals(
     }
   }
 
-  // Last, once the day's total is complete: the lì xì and the birthday come
-  // off all of it.
+  // Last, once the day's total is complete: the lì xì, the birthday and the
+  // admin's discount come off all of it.
   for (const day of byDate.values()) {
     const discount = discounts.get(discountKey(userId, day.serviceDate));
     if (!discount) continue;
     day.luckyPercent = discount.luckyPercent;
     day.birthday = discount.birthday;
+    day.adminDiscount = discount.adminDiscount;
     day.discountVnd = discountVnd(day.totalVnd, discountPercent(discount));
     day.totalVnd -= day.discountVnd;
   }
