@@ -189,6 +189,10 @@ export function PaymentRoster({
                       {row.fullySettled && (
                         <Check className="ml-1.5 inline size-3.5 text-emerald-600" />
                       )}
+                      {/* Two people can share a name; the email tells them apart. */}
+                      <span className="text-muted-foreground block text-xs whitespace-nowrap">
+                        {row.email}
+                      </span>
                     </td>
 
                     {dates.map((date) => {
