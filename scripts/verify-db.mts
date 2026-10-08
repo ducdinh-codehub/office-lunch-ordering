@@ -4,7 +4,7 @@
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db/index.js";
-import { menuDays, menuItems, users, bookings, payments, dayOrders, luckyEnvelopes, adminDiscounts } from "../src/db/schema.js";
+import { menuDays, menuItems, users, bookings, payments, dayOrders, luckyEnvelopes, adminDiscounts, manualBills, manualBillItems } from "../src/db/schema.js";
 import { drawLuckyPercent } from "../src/lib/lucky-envelope.js";
 import { discountPercent, discountVnd } from "../src/lib/day-discount.js";
 import { birthdayField, birthdayInYear, birthdaysBetween, isBirthdayOn } from "../src/lib/birthday.js";
@@ -13,6 +13,7 @@ import { cutoffOrderError, resolveActiveSlot } from "../src/lib/menu-slot.js";
 import { getUserBookingsForDay, getUserDailyTotals, getKitchenSummary, getDayBookingsByPerson, getUserTotalsForDates, getDayOrdersByPerson, syncDayOrder } from "../src/db/queries/bookings.js";
 import { getUserLedger, getPaymentRoster, getPendingClaims } from "../src/db/queries/payments.js";
 import { getAppSettings } from "../src/db/queries/settings.js";
+import { listManualBills } from "../src/db/queries/manual-bills.js";
 import { randomUUID } from "node:crypto";
 
 let failures = 0;
@@ -70,13 +71,13 @@ check("per-day line totals", aliceD3.map(l => l.lineTotalVnd), [120000, 55000]);
 
 const aliceTotals = await getUserDailyTotals(alice.id, D1, D3);
 check("daily totals (desc)", aliceTotals, [
-  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
-  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
-  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
+  { serviceDate: D3, totalVnd: 175000, itemCount: 3, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null, manualVnd: 0 },
+  { serviceDate: D2, totalVnd: 50000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null, manualVnd: 0 },
+  { serviceDate: D1, totalVnd: 45000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null, manualVnd: 0 },
 ]);
 
 const bobTotals = await getUserDailyTotals(bob.id, D1, D3);
-check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null }]);
+check("cancelled bookings excluded", bobTotals, [{ serviceDate: D3, totalVnd: 60000, itemCount: 1, setCount: 0, incompleteSet: false, shipVnd: 0, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null, manualVnd: 0 }]);
 
 const kitchen = await getKitchenSummary(byDate.get(D3)!.id);
 check("kitchen headcount", kitchen.map(k => [k.itemName, k.totalQuantity]), [["Phở bò", 3], ["Cơm tấm", 1]]);
@@ -252,7 +253,7 @@ check("a diner's lines are scoped to one menu",
 // 60k + 200k food, plus both delivery fees — Alice is the only diner on each.
 const d5Totals = await getUserDailyTotals(alice.id, D5, D5);
 check("the date bills as one amount", d5Totals, [
-  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null },
+  { serviceDate: D5, totalVnd: 310000, itemCount: 2, setCount: 0, incompleteSet: false, shipVnd: 50000, discountVnd: 0, luckyPercent: null, birthday: false, adminDiscount: null, manualVnd: 0 },
 ]);
 // The bug this guards: à-la-carte dishes are not an unfinished suất. A party
 // menu has no suất at all, so nothing on this date is "chưa đủ món".
@@ -466,6 +467,60 @@ await db.update(users).set({ birthMonth: null, birthDay: null }).where(eq(users.
 await db.delete(adminDiscounts);
 check("a removed discount restores the full price",
   (await getUserTotalsForDates(alice.id, [D3])).get(D3), giftAliceBefore);
+
+console.log("\n── hoá đơn riêng ──");
+await db.delete(manualBills);
+// A date nobody booked on: the bill stands alone.
+const D9 = "2026-09-20";
+const billBefore = (await getUserTotalsForDates(alice.id, [D3])).get(D3)!;
+const bobD3Before = (await getUserTotalsForDates(bob.id, [D3])).get(D3)!;
+
+const [onD3] = await db.insert(manualBills)
+  .values({ userId: alice.id, serviceDate: D3, serviceTime: "15:30", title: "Trà sữa" }).returning();
+await db.insert(manualBillItems).values([
+  { billId: onD3.id, name: "Trà đào", quantity: 2, unitPriceVnd: 35000, sortOrder: 0 },
+  { billId: onD3.id, name: "Bánh", quantity: 1, unitPriceVnd: 20000, sortOrder: 1 },
+]);
+const [alone] = await db.insert(manualBills).values({ userId: alice.id, serviceDate: D9 }).returning();
+await db.insert(manualBillItems).values({ billId: alone.id, name: "Lẩu", quantity: 1, unitPriceVnd: 150000 });
+
+check("a bill joins the date's claim total", (await getUserTotalsForDates(alice.id, [D3])).get(D3), billBefore + 90000);
+const billDay = (await getUserDailyTotals(alice.id, D3, D3))[0];
+check("bookings total includes it, and says how much",
+  [billDay.totalVnd, billDay.manualVnd], [billBefore + 90000, 90000]);
+check("ledger owes it", (await getUserLedger(alice.id, D3, D3)).map(e => [e.owedVnd, e.manualVnd]), [[billBefore + 90000, 90000]]);
+check("roster agrees",
+  (await getPaymentRoster(D3, D3)).rows.find(r => r.userId === alice.id)?.cells.get(D3)?.owedVnd, billBefore + 90000);
+check("someone else's day is untouched", (await getUserTotalsForDates(bob.id, [D3])).get(D3), bobD3Before);
+
+check("a bill on a date with no menu is still a day",
+  (await getUserDailyTotals(alice.id, D9, D9)).map(d => [d.totalVnd, d.itemCount, d.setCount, d.manualVnd]),
+  [[150000, 0, 0, 150000]]);
+check("…which can be claimed", (await getUserTotalsForDates(alice.id, [D9])).get(D9), 150000);
+check("…and shows on the roster",
+  (await getPaymentRoster(D9, D9)).rows.map(r => [r.userId === alice.id, r.cells.get(D9)?.owedVnd]), [[true, 150000]]);
+
+// The day's discount comes off the bill too: one day, one total, one rounding.
+await db.insert(adminDiscounts).values({ userId: alice.id, serviceDate: D9, percent: 10 });
+check("a discount on the date takes off the bill too", (await getUserTotalsForDates(alice.id, [D9])).get(D9), 135000);
+await db.delete(adminDiscounts);
+
+const listed = await listManualBills({ from: D3, to: D9, userId: alice.id });
+check("the diner's list, newest date first, lines in order",
+  listed.map(b => [b.serviceDate, b.title, b.totalVnd, b.items.map(i => i.name)]),
+  [[D9, null, 150000, ["Lẩu"]], [D3, "Trà sữa", 90000, ["Trà đào", "Bánh"]]]);
+check("…and nobody else's", (await listManualBills({ from: D3, to: D9, userId: bob.id })).length, 0);
+
+let badQty = false;
+try { await db.insert(manualBillItems).values({ billId: alone.id, name: "x", quantity: 100, unitPriceVnd: 1 }); }
+catch { badQty = true; }
+check("quantity over 99 cannot be stored", badQty, true);
+
+await db.delete(manualBills).where(eq(manualBills.id, onD3.id));
+check("a deleted bill restores the day", (await getUserTotalsForDates(alice.id, [D3])).get(D3), billBefore);
+check("…and its lines go with it",
+  (await db.select().from(manualBillItems).where(eq(manualBillItems.billId, onD3.id))).length, 0);
+await db.delete(manualBills);
 
 console.log("\n── settings seed from env ──");
 const settings = await getAppSettings();

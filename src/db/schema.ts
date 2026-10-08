@@ -8,6 +8,7 @@ import {
   pgTable,
   smallint,
   text,
+  time,
   timestamp,
   unique,
   uuid,
@@ -420,6 +421,58 @@ export const adminDiscounts = pgTable(
   ],
 );
 
+/**
+ * A bill the admin writes for one person by hand — a coffee run, a dinner
+ * paid up front, anything that never went through a menu. It belongs to a
+ * date like a meal does and is added to that date's total, so it is paid with
+ * the same QR and the same claim, and the day's discounts come off it too.
+ * `service_time` is only a label (Vietnam wall-clock); the date is what money
+ * is keyed on. A day already claimed is refused, because its amount is fixed
+ * on the `payments` row.
+ */
+export const manualBills = pgTable(
+  "manual_bills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    serviceDate: date("service_date").notNull(),
+    serviceTime: time("service_time"),
+    // Shown to the diner as the bill's heading, e.g. "Trà sữa chiều thứ 6".
+    title: text("title"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("manual_bills_user_date_idx").on(t.userId, t.serviceDate)],
+);
+
+/**
+ * One line of a manual bill. The price is typed by the admin and is the bill —
+ * nothing references a menu item, so nothing can re-price it. Quantity is
+ * capped at 99 for the same 32-bit reason bookings are.
+ */
+export const manualBillItems = pgTable(
+  "manual_bill_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    billId: uuid("bill_id")
+      .notNull()
+      .references(() => manualBills.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    unitPriceVnd: integer("unit_price_vnd").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [
+    index("manual_bill_items_bill_idx").on(t.billId),
+    check("manual_bill_items_quantity_check", sql`${t.quantity} between 1 and 99`),
+    check("manual_bill_items_price_check", sql`${t.unitPriceVnd} >= 0`),
+  ],
+);
+
 /* ─────────────────────────────────── email ───────────────────────────────── */
 
 /**
@@ -587,6 +640,8 @@ export type Payment = typeof payments.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
 export type LuckyEnvelope = typeof luckyEnvelopes.$inferSelect;
 export type AdminDiscount = typeof adminDiscounts.$inferSelect;
+export type ManualBill = typeof manualBills.$inferSelect;
+export type ManualBillItem = typeof manualBillItems.$inferSelect;
 export type EmailJob = typeof emailJobs.$inferSelect;
 export type EmailKind = (typeof emailKind.enumValues)[number];
 export type EmailRunTrigger = (typeof emailRunTrigger.enumValues)[number];

@@ -156,6 +156,11 @@ export function SettleUp({
                   onCheckedChange={() => toggle(entry.serviceDate)}
                 />
                 <span className="flex-1 text-sm">{formatServiceDate(entry.serviceDate)}</span>
+                {entry.manualVnd > 0 && (
+                  <Badge variant="outline" className="text-xs" title="Có hoá đơn riêng">
+                    🧾 {formatVnd(entry.manualVnd)}
+                  </Badge>
+                )}
                 {entry.luckyPercent !== null && (
                   <Badge variant="outline" className="border-red-200 text-xs text-red-700">
                     🧧 −{entry.luckyPercent}%

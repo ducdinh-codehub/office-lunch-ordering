@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
@@ -12,9 +12,11 @@ import {
   dayOrders,
   emailImages,
   luckyEnvelopes,
+  manualBills,
   payments,
   users,
 } from "@/db/schema";
+import { getClaimedDates } from "@/db/queries/payments";
 import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -316,6 +318,8 @@ export async function resetOrderHistory(input: unknown): Promise<ActionResult<nu
     // The days any lì xì or admin discount took money off are gone with them.
     await db.delete(luckyEnvelopes);
     await db.delete(adminDiscounts);
+    // Hand-written bills are order history too; their lines cascade.
+    await db.delete(manualBills);
 
     revalidatePath("/");
     revalidatePath("/admin/settings");
@@ -523,22 +527,6 @@ const adminDiscountSchema = z
   })
   .refine((v) => v.from <= v.to, { message: "Ngày kết thúc phải sau ngày bắt đầu." });
 
-/** Dates in `dates` this person has already claimed — their amount is fixed. */
-async function claimedDates(userId: string, dates: ServiceDate[]): Promise<Set<ServiceDate>> {
-  if (dates.length === 0) return new Set();
-  const rows = await db
-    .select({ serviceDate: payments.serviceDate })
-    .from(payments)
-    .where(
-      and(
-        eq(payments.userId, userId),
-        inArray(payments.serviceDate, dates),
-        inArray(payments.status, ["pending", "confirmed"]),
-      ),
-    );
-  return new Set(rows.map((row) => row.serviceDate));
-}
-
 export type SetAdminDiscountResult = { saved: number; skipped: ServiceDate[] };
 
 /**
@@ -568,7 +556,7 @@ export async function setAdminDiscount(
       .limit(1);
     if (!member) fail("Không tìm thấy người này.");
 
-    const claimed = await claimedDates(userId, dates);
+    const claimed = await getClaimedDates(userId, dates);
     const open = dates.filter((date) => !claimed.has(date));
     if (open.length === 0) {
       fail(
@@ -615,7 +603,7 @@ export async function removeAdminDiscount(input: unknown): Promise<ActionResult>
       .limit(1);
     if (!row) fail("Giảm giá này không còn nữa.");
 
-    const claimed = await claimedDates(row.userId, [row.serviceDate]);
+    const claimed = await getClaimedDates(row.userId, [row.serviceDate]);
     if (claimed.size > 0) fail("Người này đã thanh toán ngày đó — số tiền không đổi được nữa.");
 
     await db.delete(adminDiscounts).where(eq(adminDiscounts.id, id));

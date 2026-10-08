@@ -48,8 +48,8 @@ export function ResetOrders({ bookingCount }: { bookingCount: number }) {
       <CardContent className="space-y-4">
         <div className="text-muted-foreground space-y-1 text-sm">
           <p>
-            Xoá sạch lịch sử đặt món, suất đã chốt và các lần thanh toán — dùng khi bắt đầu
-            một năm mới. <span className="text-foreground font-medium">Không thể hoàn tác.</span>
+            Xoá sạch lịch sử đặt món, suất đã chốt, hoá đơn riêng và các lần thanh toán — dùng
+            khi bắt đầu một năm mới. <span className="text-foreground font-medium">Không thể hoàn tác.</span>
           </p>
           <p>
             Tài khoản của mọi người, thực đơn và cài đặt ngân hàng được giữ nguyên.

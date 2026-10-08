@@ -174,6 +174,17 @@ bug, not a style issue.
   person already claimed are skipped on a set and refused on a remove: their
   amount is fixed on the `payments` row. It stacks with the lì xì and the
   birthday; the sum is capped at 100%, so a day can be free, never negative.
+- **A hand-written bill is part of its date, not a separate debt.**
+  `/admin/bills` writes `manual_bills` + `manual_bill_items` for one person:
+  a date, an optional `service_time` (a label only), and lines whose names and
+  prices the admin types — nothing references a menu, so nothing re-prices
+  them. `getManualBillTotals()` feeds them into `getUserDailyTotals`,
+  `getUserTotalsForDates` and the roster *before* the discounts, so the day's
+  lì xì / birthday / admin discount come off them too, and they are paid with
+  the same QR and claim. A date with only a bill still becomes a day
+  (`itemCount` 0, `manualVnd` > 0). Writing or deleting one is refused on a
+  day the person already claimed (`getClaimedDates()`). They never reach the
+  quán's bill or the kitchen list.
 - **Every discount goes through one lookup and one rounding.**
   `getDayDiscounts()` returns the lì xì, the birthday and the admin discount
   per person per date; `discountPercent()` adds them (capped at 100%) and

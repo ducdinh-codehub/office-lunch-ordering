@@ -134,6 +134,13 @@
       "when": 1791176516870,
       "tag": "0018_admin_discounts",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791424611339,
+      "tag": "0019_manual_bills",
+      "breakpoints": true
     }
   ]
 }
