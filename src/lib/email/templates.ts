@@ -139,6 +139,27 @@ ${button(payUrl, "Thanh toán")}
 }
 
 /**
+ * A notice's frame: the admin's words on plain white, the way a message typed
+ * in Gmail arrives. No grey page, card or button — Gmail files mail that looks
+ * like a newsletter under Promotions, and a notice is a colleague writing.
+ * Banners still appear when the admin leaves them ticked.
+ */
+function personalLayout(content: string, footer: string, banners: EmailBanners): string {
+  return `<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:16px;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#222222;font-size:14px;line-height:1.5">
+<div style="max-width:600px">
+${banners.header ? `<img src="${escapeHtml(banners.header)}" width="600" alt="${escapeHtml(APP_SHORT_NAME)}" style="display:block;width:100%;max-width:600px;height:auto;border:0;margin:0 0 16px">` : ""}
+${content}
+${banners.footer ? `<img src="${escapeHtml(banners.footer)}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border:0;margin:16px 0 0">` : ""}
+<p style="margin:24px 0 0;color:#888888;font-size:12px">${footer}</p>
+</div>
+</body>
+</html>`;
+}
+
+/**
  * A notice is the admin's own words, greeting included — nothing is put in
  * front of them, so the email opens however the admin chose to open it.
  */
@@ -155,20 +176,21 @@ export function renderNoticeEmail({
 }): RenderedEmail {
   const profileUrl = `${appUrl}/me/profile`;
 
-  const html = layout(
+  // The opt-out stays reachable, worded as a setting rather than an
+  // unsubscribe line — that wording is itself a bulk-mail signal.
+  const html = personalLayout(
     `${messageHtml(body)}
-${button(appUrl, `Mở ${APP_SHORT_NAME}`)}`,
-    `Thông báo từ ${escapeHtml(APP_NAME)}. Không muốn nhận thông báo? <a href="${escapeHtml(profileUrl)}" style="color:#78716c">Tắt trong Hồ sơ</a>.`,
+<p style="margin:16px 0 0"><a href="${escapeHtml(appUrl)}" style="color:#1a73e8">${escapeHtml(APP_SHORT_NAME)}</a></p>`,
+    `Gửi qua ${escapeHtml(APP_SHORT_NAME)} · <a href="${escapeHtml(profileUrl)}" style="color:#888888">Cài đặt email</a>`,
     banners,
   );
 
   const text = [
     htmlToPlainText(body),
     "",
-    appUrl,
+    `${APP_SHORT_NAME}: ${appUrl}`,
     "",
-    `— ${APP_SHORT_NAME}`,
-    `Không muốn nhận thông báo? Tắt trong Hồ sơ: ${profileUrl}`,
+    `Cài đặt email: ${profileUrl}`,
   ].join("\n");
 
   return { subject, html, text };
