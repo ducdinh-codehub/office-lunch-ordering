@@ -166,6 +166,15 @@ export function SettleUp({
                     🎂 −{BIRTHDAY_PERCENT}%
                   </Badge>
                 )}
+                {entry.adminDiscount && (
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-200 text-xs text-emerald-700"
+                    title={entry.adminDiscount.note ?? undefined}
+                  >
+                    🎁 −{entry.adminDiscount.percent}%
+                  </Badge>
+                )}
                 {entry.state === "rejected" && (
                   <Badge variant="destructive" className="text-xs">
                     Kiểm tra lại

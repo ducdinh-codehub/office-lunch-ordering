@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { SettingsForm } from "@/components/admin/settings-form";
+import { AdminDiscountSettings } from "@/components/admin/admin-discount-settings";
 import { GreetingEditor } from "@/components/admin/greeting-editor";
 import { EmailBannerSettings } from "@/components/admin/email-banner-settings";
 import { GymPromoSettings } from "@/components/admin/gym-promo-settings";
@@ -12,12 +13,14 @@ import { db } from "@/db";
 import { bookings } from "@/db/schema";
 import { getAppSettings } from "@/db/queries/settings";
 import { getEnvelopeStats } from "@/db/queries/lucky-envelopes";
+import { listAdminDiscounts } from "@/db/queries/admin-discounts";
 import { getAllMembers } from "@/db/queries/users";
 import { parseHomeTheme } from "@/lib/home-themes";
 import { fallbackDisplayName } from "@/lib/display-name";
 import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
 import { toBirthday } from "@/lib/birthday";
 import { pageTitle } from "@/lib/app-name";
+import { todayServiceDate } from "@/lib/date";
 import { serverEnv } from "@/env";
 import { getEmailBannerIds } from "@/lib/email/content";
 
@@ -26,13 +29,15 @@ export const metadata = { title: pageTitle("Cài đặt") };
 
 export default async function AdminSettingsPage() {
   await requireAdmin();
-  const [settings, [{ count: bookingCount }], members, envelopeStats, bannerIds] =
+  const today = todayServiceDate();
+  const [settings, [{ count: bookingCount }], members, envelopeStats, bannerIds, discounts] =
     await Promise.all([
       getAppSettings(),
       db.select({ count: sql<number>`count(*)::int` }).from(bookings),
       getAllMembers(),
       getEnvelopeStats(),
       getEmailBannerIds(),
+      listAdminDiscounts(today),
     ]);
 
   return (
@@ -63,6 +68,21 @@ export default async function AdminSettingsPage() {
         enabled={settings.luckyEnvelopeEnabled}
         opened={envelopeStats.opened}
         byPercent={envelopeStats.byPercent}
+      />
+
+      <AdminDiscountSettings
+        today={today}
+        members={members.map((member) => ({
+          id: member.id,
+          name: member.displayName || fallbackDisplayName(member.email),
+        }))}
+        discounts={discounts.map((discount) => ({
+          id: discount.id,
+          name: discount.displayName || fallbackDisplayName(discount.email),
+          serviceDate: discount.serviceDate,
+          percent: discount.percent,
+          note: discount.note,
+        }))}
       />
 
       {serverEnv.gymTimeUrl && (
