@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Copy } from "lucide-react";
 
 import { CancelEmailButton } from "@/components/admin/scheduled-emails";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LinkButton } from "@/components/ui/link-button";
 import { getEmailJob, getEmailJobRuns, getEmailRecipientNames } from "@/db/queries/emails";
 import { serverEnv } from "@/env";
 import { pageTitle } from "@/lib/app-name";
@@ -135,8 +136,13 @@ export default async function EmailJobPage({ params }: { params: Promise<{ jobId
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-base">Nội dung</CardTitle>
+          {/* Same words, new recipients — e.g. for someone who joined later. */}
+          <LinkButton href={`/admin/emails?tu=${job.id}`} variant="outline" size="sm">
+            <Copy className="size-3.5" />
+            Dùng lại nội dung
+          </LinkButton>
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-sm">

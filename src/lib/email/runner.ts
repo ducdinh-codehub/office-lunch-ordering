@@ -164,10 +164,6 @@ async function deliverRun(
         to: recipient.email,
         ...email,
         ...images.prepare(email.html),
-        headers:
-          job.kind === "notice"
-            ? { "List-Unsubscribe": `<${serverEnv.appUrl}/me/profile>` }
-            : undefined,
       });
       await db
         .update(emailDeliveries)
