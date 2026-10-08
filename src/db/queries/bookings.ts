@@ -17,6 +17,7 @@ import {
 import { resolveSetTier } from "@/lib/set-tiers";
 import { discountPercent, discountVnd, type AdminDayDiscount } from "@/lib/day-discount";
 import { discountKey, getDayDiscounts } from "./day-discounts";
+import { getManualBillTotals } from "./manual-bills";
 import { splitEvenly } from "@/lib/money";
 import type { ServiceDate } from "@/lib/date";
 
@@ -126,6 +127,11 @@ export type DailyTotal = {
   luckyPercent: number | null;
   birthday: boolean;
   adminDiscount: AdminDayDiscount | null;
+  /**
+   * What the admin's hand-written bills added to this date, before discounts.
+   * A date can carry one with no menu at all — `itemCount` is then 0.
+   */
+  manualVnd: number;
 };
 
 /**
@@ -158,7 +164,7 @@ export async function getUserDailyTotals(
   );
   const excluded = new Set(excludeMenuDayIds);
 
-  const [itemRows, setRows, setPickRows, shipShares, discounts] = await Promise.all([
+  const [itemRows, setRows, setPickRows, shipShares, discounts, manualTotals] = await Promise.all([
     db
       .select({
         serviceDate: menuDays.serviceDate,
@@ -200,6 +206,7 @@ export async function getUserDailyTotals(
       ),
     getShipShares({ from, to }),
     getDayDiscounts({ from, to, userId }),
+    getManualBillTotals({ from, to, userId }),
   ]);
 
   const byDate = new Map<ServiceDate, DailyTotal>();
@@ -215,6 +222,7 @@ export async function getUserDailyTotals(
       luckyPercent: null,
       birthday: false,
       adminDiscount: null,
+      manualVnd: 0,
     });
   }
   for (const row of setRows) {
@@ -235,6 +243,7 @@ export async function getUserDailyTotals(
         luckyPercent: null,
         birthday: false,
         adminDiscount: null,
+        manualVnd: 0,
       });
     }
   }
@@ -255,6 +264,30 @@ export async function getUserDailyTotals(
       // rather than overwrites — otherwise the displayed fee would disagree
       // with the total it is part of.
       existing.shipVnd += share.shareVnd;
+    }
+  }
+
+  // The admin's hand-written bills join the date they were written for, menu
+  // or not — they are paid with the same transfer.
+  for (const row of manualTotals) {
+    const existing = byDate.get(row.serviceDate);
+    if (existing) {
+      existing.totalVnd += row.totalVnd;
+      existing.manualVnd += row.totalVnd;
+    } else {
+      byDate.set(row.serviceDate, {
+        serviceDate: row.serviceDate,
+        totalVnd: row.totalVnd,
+        itemCount: 0,
+        setCount: 0,
+        incompleteSet: false,
+        shipVnd: 0,
+        discountVnd: 0,
+        luckyPercent: null,
+        birthday: false,
+        adminDiscount: null,
+        manualVnd: row.totalVnd,
+      });
     }
   }
 
@@ -282,7 +315,7 @@ export async function getUserTotalsForDates(
 
   const onDates = inArray(menuDays.serviceDate, serviceDates);
 
-  const [itemRows, setRows, shipShares, discounts] = await Promise.all([
+  const [itemRows, setRows, shipShares, discounts, manualTotals] = await Promise.all([
     db
       .select({
         serviceDate: menuDays.serviceDate,
@@ -307,6 +340,7 @@ export async function getUserTotalsForDates(
       .where(and(eq(dayOrders.userId, userId), onDates)),
     getShipShares({ dates: serviceDates }),
     getDayDiscounts({ dates: serviceDates, userId }),
+    getManualBillTotals({ dates: serviceDates, userId }),
   ]);
 
   const totals = new Map<ServiceDate, number>();
@@ -321,6 +355,9 @@ export async function getUserTotalsForDates(
     // Only days the person actually ate on carry a share.
     if (!totals.has(share.serviceDate)) continue;
     totals.set(share.serviceDate, totals.get(share.serviceDate)! + share.shareVnd);
+  }
+  for (const row of manualTotals) {
+    totals.set(row.serviceDate, (totals.get(row.serviceDate) ?? 0) + row.totalVnd);
   }
   // The discounts, on the finished total — the same rule getUserDailyTotals applies.
   for (const [serviceDate, total] of totals) {

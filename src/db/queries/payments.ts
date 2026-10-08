@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { bookings, dayOrders, menuDays, menuItems, payments, users, PAID_CATEGORIES } from "@/db/schema";
 import { getShipShares, getUserDailyTotals } from "./bookings";
 import { discountKey, getDayDiscounts } from "./day-discounts";
+import { getManualBillTotals } from "./manual-bills";
 import { discountPercent, discountVnd, type AdminDayDiscount } from "@/lib/day-discount";
 import { shiftServiceDate, type ServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
@@ -25,6 +26,8 @@ export type DayLedgerEntry = {
   birthday: boolean;
   /** What the admin gave them that day, already taken off `owedVnd`. */
   adminDiscount: AdminDayDiscount | null;
+  /** What the admin's hand-written bills added to `owedVnd`, before discounts. */
+  manualVnd: number;
 };
 
 /**
@@ -67,6 +70,7 @@ export async function getUserLedger(
       luckyPercent: row.luckyPercent,
       birthday: row.birthday,
       adminDiscount: row.adminDiscount,
+      manualVnd: row.manualVnd,
     };
   });
 }
@@ -216,6 +220,22 @@ export async function getPaymentRoster(
     if (existing) existing.owedVnd = Number(existing.owedVnd) + Number(row.owedVnd);
     else merged.set(key, { ...row, owedVnd: Number(row.owedVnd) });
   }
+  // The admin's hand-written bills, which can stand on a date with no food.
+  for (const row of await getManualBillTotals({ from, to })) {
+    const key = `${row.userId}:${row.serviceDate}`;
+    const existing = merged.get(key);
+    if (existing) existing.owedVnd = Number(existing.owedVnd) + row.totalVnd;
+    else {
+      merged.set(key, {
+        userId: row.userId,
+        displayName: row.displayName,
+        email: row.email,
+        photoUrl: row.photoUrl,
+        serviceDate: row.serviceDate,
+        owedVnd: row.totalVnd,
+      });
+    }
+  }
   // The delivery fee each person owes for that day, on top of their food.
   for (const share of await getShipShares({ from, to })) {
     const existing = merged.get(`${share.userId}:${share.serviceDate}`);
@@ -346,4 +366,27 @@ export async function getClaimDates(claimId: string): Promise<ServiceDate[]> {
 export async function getPaymentsByIds(ids: string[]) {
   if (ids.length === 0) return [];
   return db.select().from(payments).where(inArray(payments.id, ids));
+}
+
+/**
+ * Dates in `dates` this person has already claimed (pending or confirmed).
+ * Their amount is fixed on the payments row, so anything that would move it —
+ * an admin discount, a hand-written bill — is refused on these.
+ */
+export async function getClaimedDates(
+  userId: string,
+  dates: ServiceDate[],
+): Promise<Set<ServiceDate>> {
+  if (dates.length === 0) return new Set();
+  const rows = await db
+    .select({ serviceDate: payments.serviceDate })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.userId, userId),
+        inArray(payments.serviceDate, dates),
+        inArray(payments.status, ["pending", "confirmed"]),
+      ),
+    );
+  return new Set(rows.map((row) => row.serviceDate));
 }

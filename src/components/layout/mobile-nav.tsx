@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Flag,
   Mail,
+  NotebookPen,
   ReceiptText,
   Settings2,
   UtensilsCrossed,
@@ -40,6 +41,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/admin/menu": UtensilsCrossed,
   "/admin/bookings": ClipboardList,
   "/admin/payments": ReceiptText,
+  "/admin/bills": NotebookPen,
   "/admin/emails": Mail,
   "/admin/settings": Settings2,
 };
