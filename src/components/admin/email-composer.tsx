@@ -40,6 +40,16 @@ export type EmailMember = {
   noticeEmailsEnabled: boolean;
 };
 
+/** An earlier email's words, copied in by "Dùng lại nội dung" — never its recipients. */
+export type EmailComposerSeed = {
+  kind: EmailKind;
+  subject: string;
+  body: string;
+  banners: { header: boolean; footer: boolean };
+  /** Shown in the note above the form. */
+  title: string;
+};
+
 type Audience = "everyone" | "selected";
 type Mode = "now" | "schedule";
 
@@ -65,11 +75,14 @@ function audienceItems(kind: EmailKind) {
  * taken back.
  */
 export function EmailComposer({
+  initial,
   members,
   debtors,
   uploadedBanners,
   defaultScheduleAt,
 }: {
+  /** Seeds the form from an earlier email; recipients are still chosen afresh. */
+  initial: EmailComposerSeed | null;
   members: EmailMember[];
   /** Who owes right now — the billing tab's recipient list. */
   debtors: Debtor[];
@@ -80,16 +93,17 @@ export function EmailComposer({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [kind, setKind] = useState<EmailKind>("billing");
-  const [subject, setSubject] = useState("");
+  const [kind, setKind] = useState<EmailKind>(initial?.kind ?? "billing");
+  const [subject, setSubject] = useState(initial?.subject ?? "");
   // Each tab keeps its own text: billing starts from the standard wording.
   const [bodies, setBodies] = useState<Record<EmailKind, string>>({
     billing: DEFAULT_BILLING_TEMPLATE,
     notice: "",
+    ...(initial ? { [initial.kind]: initial.body } : {}),
   });
   // Bumped to start the editor over from `bodies` — after sending, or a reset.
   const [editorKey, setEditorKey] = useState(0);
-  const [banners, setBanners] = useState({ header: true, footer: true });
+  const [banners, setBanners] = useState(initial?.banners ?? { header: true, footer: true });
   // Nobody until chosen: "everyone" is a tick of its own, never a default,
   // so a test cannot reach the whole office by being left as it was.
   const [audience, setAudience] = useState<Audience>("selected");
@@ -196,6 +210,21 @@ export function EmailComposer({
         <CardTitle className="text-base">Soạn email</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        {initial && (
+          <div className="bg-muted/40 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border p-3 text-sm">
+            <p className="min-w-0 flex-1">
+              Đang dùng lại nội dung của <strong className="break-words">{initial.title}</strong>.
+              Chọn người nhận rồi gửi như một email mới.
+            </p>
+            <Link
+              href="/admin/emails"
+              className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+            >
+              Soạn email trống
+            </Link>
+          </div>
+        )}
+
         <div className="space-y-1.5">
           <Label>Loại email</Label>
           <Tabs

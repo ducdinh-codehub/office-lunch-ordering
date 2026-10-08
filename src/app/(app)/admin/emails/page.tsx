@@ -4,7 +4,12 @@ import { EmailComposer } from "@/components/admin/email-composer";
 import { EmailRunList } from "@/components/admin/email-run-list";
 import { ScheduledEmails } from "@/components/admin/scheduled-emails";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getEmailMembers, getEmailRunHistory, getScheduledEmailJobs } from "@/db/queries/emails";
+import {
+  getEmailJob,
+  getEmailMembers,
+  getEmailRunHistory,
+  getScheduledEmailJobs,
+} from "@/db/queries/emails";
 import { serverEnv } from "@/env";
 import { pageTitle } from "@/lib/app-name";
 import { requireAdmin } from "@/lib/auth/session";
@@ -18,14 +23,21 @@ import { REPEAT_LABEL } from "@/lib/email/schedule";
 export const dynamic = "force-dynamic";
 export const metadata = { title: pageTitle("Email") };
 
-export default async function AdminEmailsPage() {
+export default async function AdminEmailsPage({
+  searchParams,
+}: {
+  /** `tu` names an earlier job whose words seed the composer — "Dùng lại nội dung". */
+  searchParams: Promise<{ tu?: string }>;
+}) {
   await requireAdmin();
-  const [members, debtors, scheduled, history, bannerIds] = await Promise.all([
+  const { tu } = await searchParams;
+  const [members, debtors, scheduled, history, bannerIds, source] = await Promise.all([
     getEmailMembers(),
     currentDebtors(),
     getScheduledEmailJobs(),
     getEmailRunHistory({ limit: 10 }),
     getEmailBannerIds(),
+    tu && /^[0-9a-f-]{36}$/.test(tu) ? getEmailJob(tu) : null,
   ]);
 
   const configured = isEmailConfigured();
@@ -54,7 +66,20 @@ export default async function AdminEmailsPage() {
         </div>
       )}
 
+      {/* Keyed on the source so following another "Dùng lại" link starts over. */}
       <EmailComposer
+        key={source?.id ?? "new"}
+        initial={
+          source
+            ? {
+                kind: source.kind,
+                subject: source.subject,
+                body: source.body,
+                banners: { header: source.showHeader, footer: source.showFooter },
+                title: emailJobTitle(source),
+              }
+            : null
+        }
         members={members}
         debtors={debtors}
         uploadedBanners={{
