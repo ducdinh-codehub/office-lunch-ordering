@@ -65,7 +65,10 @@ to differ.
 A signed-out `requireUser()` redirects to `/welcome` when the admin has turned
 the welcome screen on at `/admin/settings` (`app_settings.welcome_*`,
 `src/lib/welcome-screen.ts`), else to `/login`. `/welcome` itself forwards to
-`/login` when it is off and home when signed in, so sign-out always lands there.
+`/login` when it is off and home when signed in. Sign-out goes straight to
+whichever applies — the `(app)` layout picks it from the switch — rather than
+always to `/welcome`: Clerk navigates in-app, and the router can show a kept
+copy of `/welcome` instead of asking the server whether it should forward.
 Its picture is an `email_images` row served publicly by `/api/welcome-image/<id>`
 only while `welcome_image_id` points at it; `?xem-truoc=1` lets an admin preview.
 

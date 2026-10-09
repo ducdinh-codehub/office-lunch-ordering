@@ -565,7 +565,8 @@ export async function updateWelcomeScreen(input: unknown): Promise<ActionResult>
       .onConflictDoUpdate({ target: appSettings.id, set: change });
 
     revalidatePath("/welcome");
-    revalidatePath("/admin/settings");
+    // Every page's sign-out button lands by the switch (see the (app) layout).
+    revalidatePath("/", "layout");
     return actionOk();
   } catch (cause) {
     if (cause instanceof z.ZodError) {

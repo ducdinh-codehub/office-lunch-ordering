@@ -36,9 +36,12 @@ const adminLinks = [
 export function AppShell({
   user,
   donate,
+  signOutUrl,
   children,
 }: {
   user: SessionUser;
+  /** Where signing out lands: the welcome screen when it is on, else /login. */
+  signOutUrl: string;
   /** Null when no bank account is set up — nothing to donate to. */
   donate: React.ComponentProps<typeof DonateButton> | null;
   children: React.ReactNode;
@@ -115,7 +118,7 @@ export function AppShell({
                 </span>
               )}
             </Link>
-            <SignOutButton />
+            <SignOutButton redirectUrl={signOutUrl} />
           </div>
         </div>
       </header>
