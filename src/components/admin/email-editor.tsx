@@ -68,16 +68,26 @@ async function shrinkImage(file: File): Promise<Blob> {
  *
  * `onChange` gets HTML; the server sanitises it again before storing.
  */
+export type QuickImage = {
+  label: string;
+  emoji: string;
+  /** Draws the picture; it is then uploaded and inserted like any other. */
+  make: () => Promise<Blob>;
+};
+
 export function EmailEditor({
   initialHtml = "",
   onChange,
   placeholder,
   minHeight = 160,
+  quickImages = [],
 }: {
   initialHtml?: string;
   onChange: (html: string) => void;
   placeholder?: string;
   minHeight?: number;
+  /** One-click pictures offered under the toolbar, e.g. the welcome screen's. */
+  quickImages?: QuickImage[];
 }) {
   const [uploading, setUploading] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -158,6 +168,19 @@ export function EmailEditor({
   });
   editorRef.current = editor;
 
+  async function insertQuickImage(editor: Editor, image: QuickImage) {
+    setUploading((count) => count + 1);
+    try {
+      const blob = await image.make();
+      const extension = blob.type === "image/png" ? "png" : "jpg";
+      await insertImages(editor, [new File([blob], `${image.label}.${extension}`, { type: blob.type })]);
+    } catch {
+      toast.error(`Không tạo được ảnh ${image.label.toLowerCase()}.`);
+    } finally {
+      setUploading((count) => count - 1);
+    }
+  }
+
   return (
     <div className="bg-background focus-within:ring-ring/50 rounded-lg border focus-within:ring-3">
       {editor && (
@@ -166,6 +189,24 @@ export function EmailEditor({
           uploading={uploading > 0}
           onPickImage={() => fileInput.current?.click()}
         />
+      )}
+      {editor && quickImages.length > 0 && (
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 border-b px-2 py-1.5 text-xs">
+          <span>Chèn ảnh có sẵn:</span>
+          {quickImages.map((image) => (
+            <button
+              key={image.label}
+              type="button"
+              disabled={uploading > 0}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => void insertQuickImage(editor, image)}
+              className="hover:bg-accent hover:text-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-medium transition-colors disabled:pointer-events-none disabled:opacity-50"
+            >
+              <span aria-hidden>{image.emoji}</span>
+              {image.label}
+            </button>
+          ))}
+        </div>
       )}
       <div style={{ minHeight }} className="cursor-text" onClick={() => editor?.commands.focus()}>
         <EditorContent editor={editor} />

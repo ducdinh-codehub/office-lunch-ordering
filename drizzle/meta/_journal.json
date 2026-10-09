@@ -141,6 +141,27 @@
       "when": 1791424611339,
       "tag": "0019_manual_bills",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791541474378,
+      "tag": "0020_welcome_screen",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791559563748,
+      "tag": "0021_welcome_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791562729810,
+      "tag": "0022_welcome_email_link_label",
+      "breakpoints": true
     }
   ]
 }

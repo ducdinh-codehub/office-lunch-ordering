@@ -25,7 +25,9 @@ import {
   previewEmailHtml,
   sendTestEmailToMe,
 } from "@/app/(app)/admin/emails/actions";
-import { EmailEditor } from "@/components/admin/email-editor";
+import { EmailEditor, type QuickImage } from "@/components/admin/email-editor";
+import { drawInvitation, drawSchedule } from "@/lib/welcome-images";
+import type { ScheduleDay } from "@/lib/welcome-schedule";
 import { BILLING_PLACEHOLDERS, DEFAULT_BILLING_TEMPLATE } from "@/lib/email/billing-template";
 import { SUBJECT_MAX } from "@/lib/email/limits";
 import { formatVnd } from "@/lib/money";
@@ -80,6 +82,7 @@ export function EmailComposer({
   debtors,
   uploadedBanners,
   defaultScheduleAt,
+  welcome = null,
 }: {
   /** Seeds the form from an earlier email; recipients are still chosen afresh. */
   initial: EmailComposerSeed | null;
@@ -90,6 +93,8 @@ export function EmailComposer({
   uploadedBanners: { header: boolean; billing: boolean; footer: boolean };
   /** A `datetime-local` value in Vietnam time — tomorrow morning. */
   defaultScheduleAt: string;
+  /** The welcome screen's invitation and itinerary, offered as pictures in a notice. */
+  welcome?: { title: string; message: string; schedule: ScheduleDay[] } | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -299,6 +304,7 @@ export function EmailComposer({
             key={`${kind}:${editorKey}`}
             initialHtml={body}
             onChange={setBody}
+            quickImages={isBilling ? [] : welcomeImages(welcome)}
             placeholder="Viết nội dung email… Có thể dán hoặc kéo ảnh vào đây."
             minHeight={200}
           />
@@ -682,4 +688,23 @@ function EmailPreview({
       />
     </div>
   );
+}
+
+/** The welcome screen's pictures a notice can carry — only the ones it has content for. */
+function welcomeImages(
+  welcome: { title: string; message: string; schedule: ScheduleDay[] } | null,
+): QuickImage[] {
+  if (!welcome) return [];
+  const images: QuickImage[] = [];
+  if (welcome.title || welcome.message) {
+    images.push({
+      label: "Thư mời",
+      emoji: "💌",
+      make: () => drawInvitation(welcome.title, welcome.message),
+    });
+  }
+  if (welcome.schedule.length > 0) {
+    images.push({ label: "Lịch trình", emoji: "🗺️", make: () => drawSchedule(welcome.schedule) });
+  }
+  return images;
 }

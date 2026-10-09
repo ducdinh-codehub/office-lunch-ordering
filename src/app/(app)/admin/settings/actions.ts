@@ -29,6 +29,18 @@ import { displayNameField } from "@/lib/display-name";
 import { EMAIL_IMAGE_MAX_BYTES } from "@/lib/email/limits";
 import { GREETING_MAX_LENGTH } from "@/lib/greeting";
 import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
+import { SCHEDULE_LINK_LABEL_MAX, WELCOME_SCHEDULE_MAX } from "@/lib/welcome-schedule";
+import {
+  WELCOME_BORDER_RADIUS_MAX,
+  WELCOME_BORDER_STYLE_IDS,
+  WELCOME_BORDER_WIDTH_MAX,
+  WELCOME_COLOR_PATTERN,
+  WELCOME_MESSAGE_MAX,
+  WELCOME_SCALE_MAX,
+  WELCOME_SCALE_MIN,
+  WELCOME_THEME_IDS,
+  WELCOME_TITLE_MAX,
+} from "@/lib/welcome-screen";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 import { serverEnv } from "@/env";
 
@@ -495,6 +507,127 @@ export async function removeEmailBanner(input: unknown): Promise<ActionResult> {
     return actionOk();
   } catch (cause) {
     return toActionError(cause, "Không gỡ được banner.");
+  }
+}
+
+const welcomeScreenSchema = z.object({
+  enabled: z.boolean(),
+  theme: z.enum(WELCOME_THEME_IDS),
+  title: z.string().trim().max(WELCOME_TITLE_MAX, `Tiêu đề tối đa ${WELCOME_TITLE_MAX} ký tự.`),
+  message: z
+    .string()
+    .trim()
+    .max(WELCOME_MESSAGE_MAX, `Nội dung tối đa ${WELCOME_MESSAGE_MAX} ký tự.`),
+  // Not trimmed line by line: indentation is what makes a line a detail.
+  schedule: z
+    .string()
+    .max(WELCOME_SCHEDULE_MAX, `Lịch trình tối đa ${WELCOME_SCHEDULE_MAX} ký tự.`)
+    .transform((value) => value.replace(/\s+$/, "")),
+  emailLinkLabel: z
+    .string()
+    .trim()
+    .max(SCHEDULE_LINK_LABEL_MAX, `Chữ trên liên kết tối đa ${SCHEDULE_LINK_LABEL_MAX} ký tự.`),
+  textScale: z.number().int().min(WELCOME_SCALE_MIN).max(WELCOME_SCALE_MAX),
+  imageScale: z.number().int().min(WELCOME_SCALE_MIN).max(WELCOME_SCALE_MAX),
+  borderStyle: z.enum(WELCOME_BORDER_STYLE_IDS),
+  borderWidth: z.number().int().min(1).max(WELCOME_BORDER_WIDTH_MAX),
+  borderColor: z.string().trim().regex(WELCOME_COLOR_PATTERN, "Màu viền không hợp lệ."),
+  borderRadius: z.number().int().min(0).max(WELCOME_BORDER_RADIUS_MAX),
+});
+
+/** Saves the welcome screen's switch, theme, text and frame in one go. */
+export async function updateWelcomeScreen(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const values = welcomeScreenSchema.parse(input);
+    const change = {
+      welcomeEnabled: values.enabled,
+      welcomeTheme: values.theme,
+      welcomeTitle: values.title,
+      welcomeMessage: values.message,
+      welcomeSchedule: values.schedule,
+      welcomeEmailLinkLabel: values.emailLinkLabel,
+      welcomeTextScale: values.textScale,
+      welcomeImageScale: values.imageScale,
+      welcomeBorderStyle: values.borderStyle,
+      welcomeBorderWidth: values.borderWidth,
+      welcomeBorderColor: values.borderColor.toLowerCase(),
+      welcomeBorderRadius: values.borderRadius,
+      updatedAt: new Date(),
+    };
+
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, ...change })
+      .onConflictDoUpdate({ target: appSettings.id, set: change });
+
+    revalidatePath("/welcome");
+    revalidatePath("/admin/settings");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Thông tin chưa đúng." };
+    }
+    return toActionError(cause, "Không lưu được màn hình chào.");
+  }
+}
+
+/**
+ * Uploads (or replaces) the welcome screen's picture. The one it replaces is
+ * kept in `email_images` but stops being served: the public route only hands
+ * out the picture this column points at.
+ */
+export async function setWelcomeImage(formData: FormData): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) fail("Hãy chọn một ảnh.");
+    if (file.size > EMAIL_IMAGE_MAX_BYTES) fail("Ảnh quá lớn — tối đa 2 MB.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const type = sniffImageType(bytes);
+    if (!type) fail("Chỉ nhận ảnh PNG, JPG, WEBP hoặc GIF.");
+
+    const [image] = await db
+      .insert(emailImages)
+      .values({ data: Buffer.from(bytes).toString("base64"), type, createdByUserId: user.id })
+      .returning({ id: emailImages.id });
+    const change = { welcomeImageId: image.id, updatedAt: new Date() };
+    await db
+      .insert(appSettings)
+      .values({ id: SETTINGS_ID, ...change })
+      .onConflictDoUpdate({ target: appSettings.id, set: change });
+
+    revalidatePath("/welcome");
+    revalidatePath("/admin/settings");
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không tải được ảnh lên.");
+  }
+}
+
+/** Takes the picture off the welcome screen. */
+export async function removeWelcomeImage(): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+
+    await db
+      .update(appSettings)
+      .set({ welcomeImageId: null, updatedAt: new Date() })
+      .where(eq(appSettings.id, SETTINGS_ID));
+
+    revalidatePath("/welcome");
+    revalidatePath("/admin/settings");
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không gỡ được ảnh.");
   }
 }
 

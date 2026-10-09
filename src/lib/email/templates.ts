@@ -162,25 +162,34 @@ ${banners.footer ? `<img src="${escapeHtml(banners.footer)}" width="600" alt="" 
 /**
  * A notice is the admin's own words, greeting included — nothing is put in
  * front of them, so the email opens however the admin chose to open it.
+ *
+ * Under them goes one link: to the trip's itinerary while the welcome screen
+ * has one (`scheduleLink`, in the admin's words), set large so it reads as the
+ * invitation's call to action; otherwise to the app, by name.
  */
 export function renderNoticeEmail({
   subject,
   body,
   appUrl,
+  scheduleLink = null,
   banners = NO_BANNERS,
 }: {
   subject: string;
   body: string;
   appUrl: string;
+  scheduleLink?: { url: string; label: string } | null;
   banners?: EmailBanners;
 }): RenderedEmail {
   const profileUrl = `${appUrl}/me/profile`;
+  const link = scheduleLink
+    ? `<p style="margin:24px 0 0;font-size:20px;line-height:1.4"><a href="${escapeHtml(scheduleLink.url)}" style="color:#1a73e8;font-weight:700">${escapeHtml(scheduleLink.label)}</a></p>`
+    : `<p style="margin:16px 0 0"><a href="${escapeHtml(appUrl)}" style="color:#1a73e8">${escapeHtml(APP_SHORT_NAME)}</a></p>`;
 
   // The opt-out stays reachable, worded as a setting rather than an
   // unsubscribe line — that wording is itself a bulk-mail signal.
   const html = personalLayout(
     `${messageHtml(body)}
-<p style="margin:16px 0 0"><a href="${escapeHtml(appUrl)}" style="color:#1a73e8">${escapeHtml(APP_SHORT_NAME)}</a></p>`,
+${link}`,
     `Gửi qua ${escapeHtml(APP_SHORT_NAME)} · <a href="${escapeHtml(profileUrl)}" style="color:#888888">Cài đặt email</a>`,
     banners,
   );
@@ -188,7 +197,7 @@ export function renderNoticeEmail({
   const text = [
     htmlToPlainText(body),
     "",
-    `${APP_SHORT_NAME}: ${appUrl}`,
+    scheduleLink ? `${scheduleLink.label}: ${scheduleLink.url}` : `${APP_SHORT_NAME}: ${appUrl}`,
     "",
     `Cài đặt email: ${profileUrl}`,
   ].join("\n");

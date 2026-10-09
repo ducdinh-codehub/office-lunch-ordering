@@ -17,6 +17,8 @@ import { formatInstant, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { isEmailConfigured } from "@/lib/email/mailer";
 import { EMAIL_KIND_LABEL, emailAudienceText, emailJobTitle } from "@/lib/email/labels";
 import { getEmailBannerIds } from "@/lib/email/content";
+import { getAppSettings } from "@/db/queries/settings";
+import { parseSchedule } from "@/lib/welcome-schedule";
 import { currentDebtors } from "@/lib/email/runner";
 import { REPEAT_LABEL } from "@/lib/email/schedule";
 
@@ -31,13 +33,14 @@ export default async function AdminEmailsPage({
 }) {
   await requireAdmin();
   const { tu } = await searchParams;
-  const [members, debtors, scheduled, history, bannerIds, source] = await Promise.all([
+  const [members, debtors, scheduled, history, bannerIds, source, settings] = await Promise.all([
     getEmailMembers(),
     currentDebtors(),
     getScheduledEmailJobs(),
     getEmailRunHistory({ limit: 10 }),
     getEmailBannerIds(),
     tu && /^[0-9a-f-]{36}$/.test(tu) ? getEmailJob(tu) : null,
+    getAppSettings(),
   ]);
 
   const configured = isEmailConfigured();
@@ -88,6 +91,11 @@ export default async function AdminEmailsPage({
           footer: Boolean(bannerIds.footer),
         }}
         defaultScheduleAt={`${shiftServiceDate(todayServiceDate(), 1)}T08:00`}
+        welcome={{
+          title: settings.welcomeTitle,
+          message: settings.welcomeMessage,
+          schedule: parseSchedule(settings.welcomeSchedule),
+        }}
       />
 
       <Card>

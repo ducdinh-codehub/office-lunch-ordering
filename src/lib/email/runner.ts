@@ -13,9 +13,15 @@ import {
 } from "@/db/schema";
 import { getMenuDaysForDate } from "@/db/queries/menu";
 import { getDebtors, getOutstanding, type Debtor } from "@/db/queries/payments";
+import { getAppSettings } from "@/db/queries/settings";
 import { serverEnv } from "@/env";
 import { shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
+import {
+  DEFAULT_SCHEDULE_LINK_LABEL,
+  parseSchedule,
+  WELCOME_SCHEDULE_PATH,
+} from "@/lib/welcome-schedule";
 import { emailBanners, getEmailBannerIds, loadInlineImages, type EmailBanners } from "./content";
 import { sendEmail } from "./mailer";
 import { nextOccurrence } from "./schedule";
@@ -92,7 +98,16 @@ async function renderFor(
 ): Promise<RenderedEmail | null> {
   const appUrl = serverEnv.appUrl;
   if (job.kind === "notice") {
-    return renderNoticeEmail({ subject: job.subject, body: job.body, appUrl, banners });
+    // While the trip has an itinerary, a notice links straight to it.
+    const settings = await getAppSettings();
+    const scheduleLink =
+      parseSchedule(settings.welcomeSchedule).length > 0
+        ? {
+            url: `${appUrl}${WELCOME_SCHEDULE_PATH}`,
+            label: settings.welcomeEmailLinkLabel || DEFAULT_SCHEDULE_LINK_LABEL,
+          }
+        : null;
+    return renderNoticeEmail({ subject: job.subject, body: job.body, appUrl, scheduleLink, banners });
   }
   const { today, unlocked } = billingContext!;
   const { entries, totalVnd } = await getOutstanding(recipient.id, today, unlocked);

@@ -62,6 +62,13 @@ list in the app reads that column, falling back to the email's local part.
 Nothing reads the Clerk name again once the row exists, so the two are expected
 to differ.
 
+A signed-out `requireUser()` redirects to `/welcome` when the admin has turned
+the welcome screen on at `/admin/settings` (`app_settings.welcome_*`,
+`src/lib/welcome-screen.ts`), else to `/login`. `/welcome` itself forwards to
+`/login` when it is off and home when signed in, so sign-out always lands there.
+Its picture is an `email_images` row served publicly by `/api/welcome-image/<id>`
+only while `welcome_image_id` points at it; `?xem-truoc=1` lets an admin preview.
+
 **`requireUser()` / `requireAdmin()` must be called at the top of every Server
 Action, not only in layouts.** Middleware and layout checks are routing
 conveniences; actions are separately addressable endpoints. Admin status is
