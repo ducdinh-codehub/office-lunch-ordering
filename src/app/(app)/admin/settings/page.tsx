@@ -9,6 +9,7 @@ import { HomeThemePicker } from "@/components/admin/home-theme-picker";
 import { LuckyEnvelopeSettings } from "@/components/admin/lucky-envelope-settings";
 import { MemberList } from "@/components/admin/member-list";
 import { ResetOrders } from "@/components/admin/reset-orders";
+import { WelcomeScreenSettings } from "@/components/admin/welcome-screen-settings";
 import { db } from "@/db";
 import { bookings } from "@/db/schema";
 import { getAppSettings } from "@/db/queries/settings";
@@ -16,6 +17,11 @@ import { getEnvelopeStats } from "@/db/queries/lucky-envelopes";
 import { listAdminDiscounts } from "@/db/queries/admin-discounts";
 import { getAllMembers } from "@/db/queries/users";
 import { parseHomeTheme } from "@/lib/home-themes";
+import {
+  parseWelcomeBorderStyle,
+  parseWelcomeTheme,
+  welcomeImageUrl,
+} from "@/lib/welcome-screen";
 import { fallbackDisplayName } from "@/lib/display-name";
 import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
 import { toBirthday } from "@/lib/birthday";
@@ -61,6 +67,24 @@ export default async function AdminSettingsPage() {
       <HomeThemePicker homeTheme={parseHomeTheme(settings.homeTheme)} />
 
       <GreetingEditor greetingMessage={settings.greetingMessage} />
+
+      <WelcomeScreenSettings
+        initial={{
+          enabled: settings.welcomeEnabled,
+          theme: parseWelcomeTheme(settings.welcomeTheme),
+          title: settings.welcomeTitle,
+          message: settings.welcomeMessage,
+          schedule: settings.welcomeSchedule,
+          emailLinkLabel: settings.welcomeEmailLinkLabel,
+          textScale: settings.welcomeTextScale,
+          imageScale: settings.welcomeImageScale,
+          borderStyle: parseWelcomeBorderStyle(settings.welcomeBorderStyle),
+          borderWidth: settings.welcomeBorderWidth,
+          borderColor: settings.welcomeBorderColor,
+          borderRadius: settings.welcomeBorderRadius,
+        }}
+        imageUrl={settings.welcomeImageId ? welcomeImageUrl(settings.welcomeImageId) : null}
+      />
 
       <EmailBannerSettings ids={bannerIds} />
 

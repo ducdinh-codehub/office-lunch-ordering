@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "welcome_email_link_label" text DEFAULT '' NOT NULL;

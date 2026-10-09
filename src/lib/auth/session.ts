@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { users, type User } from "@/db/schema";
+import { getAppSettings } from "@/db/queries/settings";
 import { serverEnv } from "@/env";
 
 export type SessionUser = User & { isAdmin: boolean };
@@ -67,7 +68,8 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 /** Use at the top of every protected page and every Server Action. */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  // Signed out: the welcome screen comes first when the admin has turned it on.
+  if (!user) redirect((await getAppSettings()).welcomeEnabled ? "/welcome" : "/login");
   return user;
 }
 

@@ -359,6 +359,38 @@ export const appSettings = pgTable("app_settings", {
   footerBannerImageId: uuid("footer_banner_image_id").references(() => emailImages.id, {
     onDelete: "set null",
   }),
+  /**
+   * The welcome screen shown to signed-out visitors before /login
+   * (`src/lib/welcome-screen.ts`). Off by default, so a fresh install goes
+   * straight to sign-in as it always did. Theme and border style are text,
+   * not pg enums, for the same reason as `home_theme`; scales are percent.
+   * The picture is an `email_images` row like the banners, but it is served
+   * publicly by /api/welcome-image — only while this column points at it.
+   */
+  welcomeEnabled: boolean("welcome_enabled").notNull().default(false),
+  welcomeTheme: text("welcome_theme").notNull().default("default"),
+  welcomeTitle: text("welcome_title").notNull().default(""),
+  welcomeMessage: text("welcome_message").notNull().default(""),
+  /**
+   * An optional itinerary behind a "Xem lịch trình" button, written as plain
+   * text — day headings, "•" stops starting with a time, indented "•" details —
+   * and laid out as a timeline by `parseSchedule()` (`src/lib/welcome-schedule.ts`).
+   */
+  welcomeSchedule: text("welcome_schedule").notNull().default(""),
+  /**
+   * The words of the link to that itinerary at the foot of a notice email;
+   * "" means the default, `DEFAULT_SCHEDULE_LINK_LABEL`.
+   */
+  welcomeEmailLinkLabel: text("welcome_email_link_label").notNull().default(""),
+  welcomeImageId: uuid("welcome_image_id").references(() => emailImages.id, {
+    onDelete: "set null",
+  }),
+  welcomeTextScale: integer("welcome_text_scale").notNull().default(100),
+  welcomeImageScale: integer("welcome_image_scale").notNull().default(100),
+  welcomeBorderStyle: text("welcome_border_style").notNull().default("none"),
+  welcomeBorderWidth: integer("welcome_border_width").notNull().default(2),
+  welcomeBorderColor: text("welcome_border_color").notNull().default(""),
+  welcomeBorderRadius: integer("welcome_border_radius").notNull().default(24),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

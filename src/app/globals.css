@@ -999,3 +999,380 @@
   pointer-events: none;
   color: var(--muted-foreground);
 }
+
+/* ── Travel backdrop (welcome screen) ──────────────────────────────────────
+   A travel poster at golden hour: thin clouds and gulls cross slowly, the
+   plane draws its contrail, balloons rise far off, light glints on the bay,
+   the sailboat crosses rocking, palm fronds sway. */
+.travel-sun {
+  background: radial-gradient(circle at 50% 50%, #fff7ea 0%, #f8d9b0 60%, #f1c294 100%);
+  box-shadow: 0 0 80px 40px rgb(248 205 160 / 0.45);
+  opacity: 0.9;
+}
+
+.dark .travel-sun {
+  background: radial-gradient(circle at 50% 50%, #f1ede4 0%, #cfd4dc 100%);
+  box-shadow: 0 0 60px 20px rgb(203 213 225 / 0.15);
+  opacity: 0.55;
+}
+
+/* Clouds and birds (`src/components/themes/sky.tsx`), shared by the welcome backdrops. */
+.sky-drift {
+  animation: travel-cross var(--drift-duration) linear infinite;
+  animation-delay: var(--drift-delay);
+}
+
+.travel-plane {
+  animation: travel-fly 46s linear infinite;
+  animation-delay: -12s;
+}
+
+.travel-balloon {
+  animation: travel-rise var(--balloon-duration) linear infinite;
+  animation-delay: var(--balloon-delay);
+}
+
+.travel-sway {
+  transform-origin: 50% 0;
+  animation: travel-sway 9s ease-in-out infinite;
+}
+
+.sky-flap {
+  transform-origin: 50% 60%;
+  animation: travel-flap 0.9s ease-in-out infinite alternate;
+}
+
+.travel-frond {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: travel-sway 7s ease-in-out infinite;
+}
+
+.travel-sail {
+  animation: travel-sail 110s linear infinite;
+  animation-delay: -40s;
+}
+
+.travel-bob {
+  animation: travel-bob 4s ease-in-out infinite;
+}
+
+.travel-glint {
+  animation: travel-glint 4.5s ease-in-out infinite;
+}
+
+@keyframes travel-cross {
+  from {
+    transform: translateX(-30vw);
+  }
+  to {
+    transform: translateX(110vw);
+  }
+}
+
+@keyframes travel-fly {
+  from {
+    transform: translate(-20vw, 4vh) rotate(-3deg);
+  }
+  to {
+    transform: translate(120vw, -4vh) rotate(-3deg);
+  }
+}
+
+@keyframes travel-rise {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateY(calc(-100vh - 10rem));
+    opacity: 0;
+  }
+}
+
+@keyframes travel-sway {
+  0%,
+  100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+@keyframes travel-flap {
+  from {
+    transform: scaleY(1);
+  }
+  to {
+    transform: scaleY(0.55);
+  }
+}
+
+@keyframes travel-sail {
+  from {
+    transform: translateX(-12vw);
+  }
+  to {
+    transform: translateX(112vw);
+  }
+}
+
+@keyframes travel-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(3px) rotate(2deg);
+  }
+}
+
+@keyframes travel-glint {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── Team building backdrop (welcome screen) ───────────────────────────────
+   An offsite at golden hour: the campfire flickers and sends up embers, fireflies blink, the tug-of-war rope
+   shifts to and fro. The people are `.alegria-*`, below. */
+.team-sun {
+  background: radial-gradient(circle at 50% 50%, #fff4e4 0%, #f6cfa4 65%, #eeb98a 100%);
+  box-shadow: 0 0 90px 50px rgb(246 200 150 / 0.4);
+  opacity: 0.85;
+}
+
+.dark .team-sun {
+  background: radial-gradient(circle at 50% 50%, #f3d9b8 0%, #c98f63 100%);
+  box-shadow: 0 0 70px 30px rgb(201 143 99 / 0.2);
+  opacity: 0.45;
+}
+
+.team-flame {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: team-flame 1.1s ease-in-out infinite alternate;
+}
+
+.team-glow {
+  background: radial-gradient(circle, rgb(242 178 92 / 0.35) 0%, transparent 65%);
+  animation: team-glow 3s ease-in-out infinite;
+}
+
+.team-ember {
+  opacity: 0;
+  animation: team-ember var(--ember-duration) ease-out infinite;
+  animation-delay: var(--ember-delay);
+}
+
+.team-firefly {
+  background: #f3e3a0;
+  box-shadow: 0 0 8px 2px rgb(243 227 160 / 0.6);
+  animation: team-firefly 5s ease-in-out infinite;
+}
+
+.team-tug {
+  animation: team-tug 4.5s ease-in-out infinite;
+}
+
+@keyframes team-flame {
+  from {
+    transform: scale(1, 1);
+  }
+  to {
+    transform: scale(0.92, 1.1);
+  }
+}
+
+@keyframes team-glow {
+  0%,
+  100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes team-ember {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(var(--ember-drift), -6rem);
+    opacity: 0;
+  }
+}
+
+@keyframes team-firefly {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translate(10px, -8px);
+  }
+}
+
+@keyframes team-tug {
+  0%,
+  100% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+}
+
+/* ── Alegria figures (welcome backdrops, `src/components/themes/alegria.tsx`)
+   Small, slow gestures: a wave from the shoulder, a cheer's bounce, a flag's
+   flutter, the high five's spark, big leaves swaying from their base. */
+.alegria-wave {
+  animation: alegria-wave 2.8s ease-in-out infinite;
+}
+
+/* A traveller's step: a small bob, quicker than anything else on screen. */
+.alegria-stroll {
+  animation: alegria-hop 1.6s ease-in-out infinite;
+}
+
+.alegria-hop {
+  animation: alegria-hop 3.2s ease-in-out infinite;
+}
+
+.alegria-flag {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: alegria-flutter 2.2s ease-in-out infinite;
+}
+
+.alegria-spark {
+  animation: alegria-spark 2.4s ease-in-out infinite;
+}
+
+/* The background's soft shapes drift like slow clouds, each on its own path. */
+.alegria-drift-a {
+  animation: alegria-drift-a 26s ease-in-out infinite alternate;
+}
+
+.alegria-drift-b {
+  animation: alegria-drift-b 32s ease-in-out infinite alternate;
+}
+
+@keyframes alegria-drift-a {
+  from {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate(12vw, 3vh) rotate(8deg);
+  }
+}
+
+@keyframes alegria-drift-b {
+  from {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  to {
+    transform: translate(-14vw, -4vh) rotate(-6deg);
+  }
+}
+
+/* Leaves are drawn around the plant's base at the origin. */
+.alegria-leaves {
+  transform-origin: 0 0;
+  animation: alegria-leaves 8s ease-in-out infinite;
+}
+
+@keyframes alegria-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-12deg);
+  }
+  75% {
+    transform: rotate(8deg);
+  }
+}
+
+@keyframes alegria-hop {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes alegria-flutter {
+  0%,
+  100% {
+    transform: skewY(0deg) scaleX(1);
+  }
+  50% {
+    transform: skewY(-6deg) scaleX(0.92);
+  }
+}
+
+@keyframes alegria-spark {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes alegria-leaves {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+
+/* Still, not gone: balloons part-way up, the boat and plane mid-scene, the
+   fireflies simply lit. */
+@media (prefers-reduced-motion: reduce) {
+  .travel-backdrop,
+  .travel-backdrop *,
+  .team-backdrop,
+  .team-backdrop * {
+    animation: none !important;
+  }
+  .travel-balloon {
+    opacity: 0.75;
+    transform: translateY(-55vh);
+  }
+  .travel-plane {
+    transform: translate(40vw, 0) rotate(-3deg);
+  }
+  .travel-sail {
+    transform: translateX(60vw);
+  }
+  .travel-glint,
+  .team-firefly {
+    opacity: 0.6;
+  }
+}

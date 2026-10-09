@@ -43,7 +43,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const gymTimeUrl = serverEnv.gymTimeUrl;
 
   return (
-    <AppShell user={user} donate={donate}>
+    <AppShell
+      user={user}
+      donate={donate}
+      signOutUrl={settings.welcomeEnabled ? "/welcome" : "/login"}
+    >
       {children}
       {settings.gymPromoEnabled && gymTimeUrl && <GymTimePromoDialog url={gymTimeUrl} />}
     </AppShell>
