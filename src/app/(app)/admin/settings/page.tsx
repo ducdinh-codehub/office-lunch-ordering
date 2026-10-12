@@ -74,6 +74,7 @@ export default async function AdminSettingsPage() {
           theme: parseWelcomeTheme(settings.welcomeTheme),
           title: settings.welcomeTitle,
           message: settings.welcomeMessage,
+          mapUrl: settings.welcomeMapUrl,
           schedule: settings.welcomeSchedule,
           emailLinkLabel: settings.welcomeEmailLinkLabel,
           textScale: settings.welcomeTextScale,

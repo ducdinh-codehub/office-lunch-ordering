@@ -1,5 +1,5 @@
 import { APP_NAME } from "@/lib/app-name";
-import { splitLinks } from "@/lib/welcome-links";
+import { splitStayLine } from "@/lib/welcome-stay";
 import { welcomeBoxStyle, type WelcomeContent } from "@/lib/welcome-screen";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +72,7 @@ export function WelcomeContentBox({
           className="text-foreground self-stretch text-left leading-relaxed break-words"
           style={{ fontSize: `calc(${text} * clamp(0.875rem, 0.8rem + 0.3vw, 1rem))` }}
         >
-          <MessageLines message={content.message} />
+          <MessageLines message={content.message} mapUrl={content.mapUrl} />
         </div>
       )}
       {footer}
@@ -93,7 +93,7 @@ const EMOJI_LED = /^\s*\p{Extended_Pictographic}/u;
  * — are not: they are short, and one that wraps once would have its few words
  * stretched across the whole width.
  */
-function MessageLines({ message }: { message: string }) {
+function MessageLines({ message, mapUrl }: { message: string; mapUrl: string }) {
   return message.split("\n").map((line, i) =>
     line.trim() === "" ? (
       <div key={i} aria-hidden className="h-[0.75em]" />
@@ -108,32 +108,30 @@ function MessageLines({ message }: { message: string }) {
               : "text-justify"
         }
       >
-        <LineWithLinks line={line.trim()} />
+        <StayLine line={line.trim()} mapUrl={mapUrl} />
       </p>
     ),
   );
 }
 
-/** A pasted address becomes a link, opened in a new tab; a Google Maps one is labelled. */
-function LineWithLinks({ line }: { line: string }) {
-  return splitLinks(line).map((part, i) =>
-    "url" in part ? (
+/**
+ * Any line as written — except the "Lưu trú:" one when there is a map link,
+ * whose value becomes the link, opened in a new tab.
+ */
+function StayLine({ line, mapUrl }: { line: string; mapUrl: string }) {
+  const stay = mapUrl ? splitStayLine(line) : null;
+  if (!stay) return line;
+  return (
+    <>
+      {stay.lead}
       <a
-        key={i}
-        href={part.url}
+        href={mapUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className={cn(
-          "text-primary font-medium underline decoration-current/40 underline-offset-4 hover:decoration-current",
-          // A bare address has no spaces to wrap at.
-          !part.map && "break-all",
-          part.map && "whitespace-nowrap",
-        )}
+        className="font-medium text-blue-600 underline decoration-current/50 underline-offset-4 hover:decoration-current dark:text-blue-400"
       >
-        {part.label}
+        {stay.value}
       </a>
-    ) : (
-      part.text
-    ),
+    </>
   );
 }

@@ -382,6 +382,11 @@ export const appSettings = pgTable("app_settings", {
    * "" means the default, `DEFAULT_SCHEDULE_LINK_LABEL`.
    */
   welcomeEmailLinkLabel: text("welcome_email_link_label").notNull().default(""),
+  /**
+   * Where the stay is on a map. When set, the value of the message's
+   * "Lưu trú:" line links to it (`src/lib/welcome-stay.ts`); "" means no link.
+   */
+  welcomeMapUrl: text("welcome_map_url").notNull().default(""),
   welcomeImageId: uuid("welcome_image_id").references(() => emailImages.id, {
     onDelete: "set null",
   }),

@@ -98,6 +98,8 @@ export const WELCOME_COLOR_PATTERN = /^(#[0-9a-fA-F]{6})?$/;
 export type WelcomeContent = {
   title: string;
   message: string;
+  /** Links the message's "Lưu trú:" value; "" for none (`src/lib/welcome-stay.ts`). */
+  mapUrl: string;
   imageUrl: string | null;
   textScale: number;
   imageScale: number;
