@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 
 import { LinkButton } from "@/components/ui/link-button";
 import { ScheduleDialog } from "@/components/welcome/schedule-dialog";
+import { SignedInForward } from "@/components/welcome/signed-in-forward";
 import { WelcomeBackdrop } from "@/components/welcome/welcome-backdrop";
 import { WelcomeContentBox } from "@/components/welcome/welcome-content-box";
 import { getAppSettings } from "@/db/queries/settings";
@@ -60,6 +61,8 @@ export default async function WelcomePage({
       )}
     >
       <WelcomeBackdrop theme={theme} />
+      {/* The preview and the email's itinerary link are meant for signed-in eyes too. */}
+      {!preview && !openSchedule && <SignedInForward />}
       <WelcomeContentBox
         content={{
           title: settings.welcomeTitle,

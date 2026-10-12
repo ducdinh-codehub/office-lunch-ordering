@@ -66,7 +66,8 @@ export function WelcomeContentBox({
       {content.message && (
         <div
           // Left-aligned: a message may be a whole letter with bullet lines,
-          // which reads badly centred.
+          // which reads badly centred. Its paragraphs are justified line by
+          // line below.
           className="text-foreground self-stretch text-left leading-relaxed break-words"
           style={{ fontSize: `calc(${text} * clamp(0.875rem, 0.8rem + 0.3vw, 1rem))` }}
         >
@@ -79,18 +80,33 @@ export function WelcomeContentBox({
 }
 
 const BULLET = /^\s*[•\-*·]\s/;
+/** A line led by an emoji — "🕒 Thời gian: …" — is a list item, not prose. */
+const EMOJI_LED = /^\s*\p{Extended_Pictographic}/u;
 
 /**
  * The message as written, line for line: a blank line is a paragraph gap, and
  * a line starting with a bullet hangs, so its wrapped lines start under the
  * text rather than under the bullet.
+ *
+ * Prose is justified, like a printed letter. List items — bullet or emoji led
+ * — are not: they are short, and one that wraps once would have its few words
+ * stretched across the whole width.
  */
 function MessageLines({ message }: { message: string }) {
   return message.split("\n").map((line, i) =>
     line.trim() === "" ? (
       <div key={i} aria-hidden className="h-[0.75em]" />
     ) : (
-      <p key={i} className={BULLET.test(line) ? "pl-[1.1em] -indent-[1.1em]" : undefined}>
+      <p
+        key={i}
+        className={
+          BULLET.test(line)
+            ? "pl-[1.1em] -indent-[1.1em]"
+            : EMOJI_LED.test(line)
+              ? undefined
+              : "text-justify"
+        }
+      >
         {line.trim()}
       </p>
     ),

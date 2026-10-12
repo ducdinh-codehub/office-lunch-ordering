@@ -69,6 +69,9 @@ the welcome screen on at `/admin/settings` (`app_settings.welcome_*`,
 whichever applies — the `(app)` layout picks it from the switch — rather than
 always to `/welcome`: Clerk navigates in-app, and the router can show a kept
 copy of `/welcome` instead of asking the server whether it should forward.
+Sign-in has the mirror problem: Clerk moves to `/` in-app, a request that beats
+the new session lands on `/welcome`, and nothing there notices — so
+`SignedInForward` reloads home when Clerk's client says signed in.
 Its picture is an `email_images` row served publicly by `/api/welcome-image/<id>`
 only while `welcome_image_id` points at it; `?xem-truoc=1` lets an admin preview.
 
