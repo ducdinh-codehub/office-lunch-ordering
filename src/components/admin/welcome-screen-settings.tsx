@@ -37,6 +37,7 @@ import {
   SCHEDULE_LINK_LABEL_MAX,
   WELCOME_SCHEDULE_MAX,
 } from "@/lib/welcome-schedule";
+import { MAP_LINK_LABEL } from "@/lib/welcome-links";
 
 export type WelcomeScreenValues = {
   enabled: boolean;
@@ -229,9 +230,15 @@ export function WelcomeScreenSettings({
             placeholder="Một vài dòng chào mừng…"
             onChange={(event) => set("message", event.target.value)}
           />
-          <p className="text-muted-foreground text-right text-xs tabular-nums">
-            {values.message.length}/{WELCOME_MESSAGE_MAX}
-          </p>
+          <div className="text-muted-foreground flex justify-between gap-4 text-xs">
+            <p>
+              Dán một link vào nội dung để thành đường dẫn bấm được — link Google Maps hiện là
+              “{MAP_LINK_LABEL}”.
+            </p>
+            <p className="shrink-0 tabular-nums">
+              {values.message.length}/{WELCOME_MESSAGE_MAX}
+            </p>
+          </div>
         </div>
 
         <div className="space-y-2">

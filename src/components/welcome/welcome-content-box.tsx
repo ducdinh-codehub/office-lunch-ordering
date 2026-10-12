@@ -1,4 +1,5 @@
 import { APP_NAME } from "@/lib/app-name";
+import { splitLinks } from "@/lib/welcome-links";
 import { welcomeBoxStyle, type WelcomeContent } from "@/lib/welcome-screen";
 import { cn } from "@/lib/utils";
 
@@ -107,8 +108,32 @@ function MessageLines({ message }: { message: string }) {
               : "text-justify"
         }
       >
-        {line.trim()}
+        <LineWithLinks line={line.trim()} />
       </p>
+    ),
+  );
+}
+
+/** A pasted address becomes a link, opened in a new tab; a Google Maps one is labelled. */
+function LineWithLinks({ line }: { line: string }) {
+  return splitLinks(line).map((part, i) =>
+    "url" in part ? (
+      <a
+        key={i}
+        href={part.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(
+          "text-primary font-medium underline decoration-current/40 underline-offset-4 hover:decoration-current",
+          // A bare address has no spaces to wrap at.
+          !part.map && "break-all",
+          part.map && "whitespace-nowrap",
+        )}
+      >
+        {part.label}
+      </a>
+    ) : (
+      part.text
     ),
   );
 }
