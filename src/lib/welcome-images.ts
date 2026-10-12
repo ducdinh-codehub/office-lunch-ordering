@@ -10,6 +10,8 @@
  * the measured height. Browser-only.
  */
 
+import { createElement } from "react";
+
 import type { ScheduleDay, ScheduleStop } from "@/lib/welcome-schedule";
 
 /** Twice an email's 600px column, so it stays sharp on a phone. */
@@ -23,6 +25,8 @@ type Run = { text: string; bold?: boolean };
 type Placed = { text: string; bold: boolean; x: number };
 
 const BULLET = /^\s*[•\-*·]\s/u;
+/** A line led by an emoji — "🕒 Thời gian: …" — is a list item, not prose. */
+const EMOJI_LED = /^\s*\p{Extended_Pictographic}/u;
 
 const DAY_COLORS = [
   { pill: "#f59e0b", bubble: "#fef3c7", chip: "#fef3c7", chipInk: "#78350f" },
@@ -97,20 +101,27 @@ class Plan {
     size: number,
     lineHeight: number,
     color: string,
-    align: "left" | "center" = "left",
+    align: "left" | "center" | "justify" = "left",
     width = 0,
   ) {
     const step = size * lineHeight;
     lines.forEach((line, i) => {
-      const offset = align === "center" ? (width - this.lineWidth(line, size)) / 2 : 0;
+      const spare = width - this.lineWidth(line, size);
+      const offset = align === "center" ? spare / 2 : 0;
+      // Justified: the spare width is shared between the gaps, as CSS does —
+      // except on a paragraph's last line, which stays left.
+      const gap =
+        align === "justify" && i < lines.length - 1 && line.length > 1
+          ? spare / (line.length - 1)
+          : 0;
       const y = top + i * step + step / 2;
       this.add(5, (ctx) => {
         ctx.fillStyle = color;
         ctx.textBaseline = "middle";
-        for (const word of line) {
+        line.forEach((word, k) => {
           ctx.font = this.font(size, word.bold);
-          ctx.fillText(word.text, left + offset + word.x, y);
-        }
+          ctx.fillText(word.text, left + offset + word.x + k * gap, y);
+        });
       });
     });
     return lines.length * step;
@@ -136,6 +147,24 @@ class Plan {
     if (!jpeg) throw new Error("Không vẽ được ảnh.");
     return jpeg;
   }
+}
+
+/**
+ * The itinerary dialog's mountain scene as an image of the given size. The
+ * component is rendered to markup here rather than redrawn on the canvas, so
+ * the picture and the dialog cannot drift apart; both modules load only when
+ * a picture is made.
+ */
+async function mountainScene(width: number, height: number): Promise<HTMLImageElement> {
+  const [{ renderToStaticMarkup }, { MountainScene }] = await Promise.all([
+    import("react-dom/server"),
+    import("@/components/welcome/mountain-scene"),
+  ]);
+  const svg = renderToStaticMarkup(createElement(MountainScene, { width, height }));
+  const image = new Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await image.decode();
+  return image;
 }
 
 function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: number) {
@@ -258,9 +287,11 @@ export async function drawInvitation(title: string, message: string): Promise<Bl
       y += 22;
       continue;
     }
-    const hang = BULLET.test(line) ? bulletIndent : 0;
-    const lines = plan.wrap(messageRuns(line), 30, inner, 0, hang);
-    y += plan.text(lines, cardX + pad, y, 30, 1.6, INK);
+    const bullet = BULLET.test(line);
+    const lines = plan.wrap(messageRuns(line), 30, inner, 0, bullet ? bulletIndent : 0);
+    // Prose is justified, list items are not — as on /welcome.
+    const align = bullet || EMOJI_LED.test(line) ? "left" : "justify";
+    y += plan.text(lines, cardX + pad, y, 30, 1.6, INK, align, inner);
   }
   const cardH = y + pad - top;
   const height = top + cardH + 300;
@@ -297,14 +328,17 @@ export async function drawSchedule(days: ScheduleDay[]): Promise<Blob> {
   const contentW = right - contentX;
   const top = 70;
 
-  // The header: a warm band across the top of the card.
+  // The header: the title in the sky, the mountain filling the bottom right
+  // beneath it — as in the dialog, which keeps the text to 65% of the width.
   let y = top + 56;
-  const titleLines = plan.wrap([{ text: "🎒 Lịch trình đi quẩy", bold: true }], 56, cardW - pad * 2);
+  const headerTextW = cardW * 0.62 - pad;
+  const titleLines = plan.wrap([{ text: "🎒 Lịch trình đi quẩy", bold: true }], 56, headerTextW);
   y += plan.text(titleLines, left, y, 56, 1.2, INK) + 10;
-  const subLines = plan.wrap([{ text: "Lưu lại để không lỡ chuyến xe nào nhé!" }], 28, cardW - pad * 2);
-  y += plan.text(subLines, left, y, 28, 1.4, MUTED) + 48;
-  const headerBottom = y;
-  y += 48;
+  const subLines = plan.wrap([{ text: "Chúc bạn có một chuyến đi đầy ý nghĩa" }], 28, headerTextW);
+  y += plan.text(subLines, left, y, 28, 1.4, MUTED);
+  const headerBottom = Math.max(y + 48, top + 300);
+  const scene = await mountainScene(cardW, headerBottom - top);
+  y = headerBottom + 48;
 
   days.forEach((day, d) => {
     const color = DAY_COLORS[d % DAY_COLORS.length];
@@ -451,16 +485,17 @@ export async function drawSchedule(days: ScheduleDay[]): Promise<Blob> {
     roundRect(ctx, cardX, top, cardW, cardBottom - top, 44);
     ctx.fill();
     ctx.shadowColor = "transparent";
-    // The warm header band, clipped to the card's rounded top.
+    // The header's sky and mountain, clipped to the card's rounded top.
     ctx.save();
     roundRect(ctx, cardX, top, cardW, cardBottom - top, 44);
     ctx.clip();
-    const band = ctx.createLinearGradient(cardX, top, cardX + cardW, headerBottom);
-    band.addColorStop(0, "#fef3c7");
+    const band = ctx.createLinearGradient(cardX, top, cardX, headerBottom);
+    band.addColorStop(0, "#e0f2fe");
     band.addColorStop(0.5, "#fff7ed");
     band.addColorStop(1, "#ffe4e6");
     ctx.fillStyle = band;
     ctx.fillRect(cardX, top, cardW, headerBottom - top);
+    ctx.drawImage(scene, cardX, top, cardW, headerBottom - top);
     ctx.restore();
   });
 

@@ -1,8 +1,11 @@
 "use client";
 
+import { Download, LoaderCircle } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { MountainScene } from "@/components/welcome/mountain-scene";
+import { drawSchedule } from "@/lib/welcome-images";
 import type { ScheduleDay } from "@/lib/welcome-schedule";
 import { cn } from "@/lib/utils";
 
@@ -118,42 +121,58 @@ export function ScheduleDialog({
         <span aria-hidden>→</span>
       </DialogTrigger>
       <DialogContent
-        className="flex max-h-[88dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        className="flex max-h-[88dvh] flex-col gap-0 overflow-hidden p-0 pb-3 sm:max-w-lg"
         onKeyDown={(event) => {
           if (event.key === "ArrowRight") show(active + 1);
           else if (event.key === "ArrowLeft") show(active - 1);
         }}
+        // Only the day panels scroll, so a wheel over the header — most of the
+        // dialog's top — would do nothing; send it to the day on show.
+        onWheel={(event) => {
+          const panel = track.current?.children[active];
+          if (!panel || panel.contains(event.target as Node)) return;
+          panel.scrollTop += event.deltaY;
+        }}
       >
-        <div className="bg-gradient-to-br from-amber-100 via-orange-50 to-rose-100 px-5 pt-5 pb-4 dark:from-amber-950/60 dark:via-stone-900 dark:to-rose-950/50">
-          <DialogTitle className="text-lg font-semibold">🎒 Lịch trình đi quẩy</DialogTitle>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Lưu lại để không lỡ chuyến xe nào nhé!
-          </p>
-          {days.length > 1 && (
-            <div
-              role="tablist"
-              aria-label="Chọn ngày"
-              className="mt-4 flex gap-2 overflow-x-auto"
-            >
-              {days.map((entry, i) => (
-                <button
-                  key={entry.title}
-                  type="button"
-                  role="tab"
-                  aria-selected={i === active}
-                  onClick={() => show(i)}
-                  className={cn(
-                    "shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
-                    i === active
-                      ? DAY_ACCENTS[i % DAY_ACCENTS.length].tab
-                      : "bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20",
-                  )}
-                >
-                  {entry.title}
-                </button>
-              ))}
+        <div className="bg-gradient-to-b from-sky-100 via-orange-50 to-rose-100 dark:from-slate-900 dark:via-stone-900 dark:to-rose-950/50">
+          {/* The title sits in the sky; the mountain fills the bottom right beneath it. */}
+          <div className="relative min-h-40 px-5 pt-5">
+            <MountainScene className="pointer-events-none absolute inset-0 size-full select-none" />
+            <div className="relative max-w-[65%]">
+              <DialogTitle className="text-lg font-semibold">🎒 Lịch trình đi quẩy</DialogTitle>
+              <p className="text-muted-foreground mt-0.5 text-sm">
+                Lịch trình có thể được cập nhật lại đến khi bắt đầu chuyến đi.
+              </p>
             </div>
-          )}
+          </div>
+          <div className="flex items-center gap-2 px-5 py-3">
+            {days.length > 1 && (
+              <div
+                role="tablist"
+                aria-label="Chọn ngày"
+                className="flex min-w-0 gap-2 overflow-x-auto"
+              >
+                {days.map((entry, i) => (
+                  <button
+                    key={entry.title}
+                    type="button"
+                    role="tab"
+                    aria-selected={i === active}
+                    onClick={() => show(i)}
+                    className={cn(
+                      "shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+                      i === active
+                        ? DAY_ACCENTS[i % DAY_ACCENTS.length].tab
+                        : "bg-white/70 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20",
+                    )}
+                  >
+                    {entry.title}
+                  </button>
+                ))}
+              </div>
+            )}
+            <DownloadButton days={days} />
+          </div>
         </div>
 
         {/* One full-width panel per day; each scrolls on its own, the track sideways —
@@ -182,7 +201,7 @@ export function ScheduleDialog({
             <section
               key={day.title}
               aria-label={day.title}
-              className="w-full shrink-0 snap-start snap-always overflow-y-auto px-5 pt-4 pb-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="w-full shrink-0 snap-start snap-always overflow-y-auto px-5 pt-4 pb-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
               <DayTimeline
                 day={day}
@@ -194,6 +213,47 @@ export function ScheduleDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Saves the whole itinerary, every day, as one picture — the same one the
+ * admin can put in a notice email — so it is at hand offline on the trip.
+ */
+function DownloadButton({ days }: { days: ScheduleDay[] }) {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+
+  async function download() {
+    setState("busy");
+    try {
+      const url = URL.createObjectURL(await drawSchedule(days));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "lich-trinh.jpg";
+      link.click();
+      // The download has its own copy once the click is handled.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setState("idle");
+    } catch (error) {
+      console.error(error);
+      setState("failed");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={download}
+      disabled={state === "busy"}
+      className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/70 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white disabled:opacity-70 dark:bg-white/10 dark:hover:bg-white/20"
+    >
+      {state === "busy" ? (
+        <LoaderCircle aria-hidden className="size-4 animate-spin" />
+      ) : (
+        <Download aria-hidden className="size-4" />
+      )}
+      {state === "failed" ? "Thử lại" : "Tải ảnh"}
+    </button>
   );
 }
 

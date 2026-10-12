@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description: "Đặt đồ ăn, thanh toán và xem ai còn nợ.",
+  description: "Hệ thống quản lý thông báo, đặt đồ ăn trưa.",
 };
 
 export const viewport: Viewport = {

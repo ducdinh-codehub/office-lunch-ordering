@@ -130,7 +130,7 @@ export const WELCOME_BUTTON_CLASS =
   "h-11 gap-2 rounded-full border border-white/70 bg-white/45 px-6 text-base font-medium text-foreground shadow-[0_6px_24px_rgb(0_0_0/0.10)] backdrop-blur-md hover:bg-white/65 dark:border-white/15 dark:bg-slate-900/45 dark:hover:bg-slate-900/65";
 
 /** What the button says. */
-export const WELCOME_BUTTON_LABEL = "Đặt cơm trưa thôi";
+export const WELCOME_BUTTON_LABEL = "Đăng nhập vào hệ thống";
 
 /** Where a welcome picture is served — public, unlike other uploaded pictures. */
 export function welcomeImageUrl(imageId: string): string {
