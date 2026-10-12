@@ -67,6 +67,7 @@ export default async function WelcomePage({
         content={{
           title: settings.welcomeTitle,
           message: settings.welcomeMessage,
+          mapUrl: settings.welcomeMapUrl,
           imageUrl: settings.welcomeImageId ? welcomeImageUrl(settings.welcomeImageId) : null,
           textScale: settings.welcomeTextScale,
           imageScale: settings.welcomeImageScale,

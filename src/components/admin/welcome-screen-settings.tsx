@@ -37,13 +37,14 @@ import {
   SCHEDULE_LINK_LABEL_MAX,
   WELCOME_SCHEDULE_MAX,
 } from "@/lib/welcome-schedule";
-import { MAP_LINK_LABEL } from "@/lib/welcome-links";
+import { WELCOME_MAP_URL_MAX } from "@/lib/welcome-stay";
 
 export type WelcomeScreenValues = {
   enabled: boolean;
   theme: WelcomeThemeId;
   title: string;
   message: string;
+  mapUrl: string;
   schedule: string;
   emailLinkLabel: string;
   textScale: number;
@@ -230,15 +231,27 @@ export function WelcomeScreenSettings({
             placeholder="Một vài dòng chào mừng…"
             onChange={(event) => set("message", event.target.value)}
           />
-          <div className="text-muted-foreground flex justify-between gap-4 text-xs">
-            <p>
-              Dán một link vào nội dung để thành đường dẫn bấm được — link Google Maps hiện là
-              “{MAP_LINK_LABEL}”.
-            </p>
-            <p className="shrink-0 tabular-nums">
-              {values.message.length}/{WELCOME_MESSAGE_MAX}
-            </p>
-          </div>
+          <p className="text-muted-foreground text-right text-xs tabular-nums">
+            {values.message.length}/{WELCOME_MESSAGE_MAX}
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="welcome-map-url">Link bản đồ nơi lưu trú</Label>
+          <Input
+            id="welcome-map-url"
+            type="url"
+            inputMode="url"
+            value={values.mapUrl}
+            maxLength={WELCOME_MAP_URL_MAX}
+            placeholder="https://maps.app.goo.gl/…"
+            onChange={(event) => set("mapUrl", event.target.value)}
+          />
+          <p className="text-muted-foreground text-xs">
+            Có link thì phần sau <strong>Lưu trú:</strong> trong nội dung thành chữ xanh gạch chân —
+            bấm vào là mở bản đồ. Để trống thì không có liên kết. Ảnh thư mời trong email không có
+            liên kết này.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -374,6 +387,7 @@ export function WelcomeScreenSettings({
               content={{
                 title: values.title.trim(),
                 message: values.message.trim(),
+                mapUrl: values.mapUrl.trim(),
                 imageUrl,
                 textScale: values.textScale,
                 imageScale: values.imageScale,

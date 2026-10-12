@@ -12,7 +12,6 @@
 
 import { createElement } from "react";
 
-import { splitLinks } from "@/lib/welcome-links";
 import type { ScheduleDay, ScheduleStop } from "@/lib/welcome-schedule";
 
 /** Twice an email's 600px column, so it stays sharp on a phone. */
@@ -261,18 +260,8 @@ function ground(plan: Plan, height: number) {
   });
 }
 
-/**
- * A message line as the picture shows it. Nobody can click a picture, so a
- * Google Maps link is left out — the email's own link leads to /welcome,
- * where it works — and any other address is shown as written.
- */
 function messageRuns(line: string): Run[] {
-  const text = splitLinks(line)
-    .map((part) => ("url" in part ? (part.map ? "" : part.label) : part.text))
-    .join("")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  return [{ text }];
+  return [{ text: line.trim() }];
 }
 
 /** The invitation card on the golden-hour scene, as on /welcome. */
@@ -294,15 +283,12 @@ export async function drawInvitation(title: string, message: string): Promise<Bl
   plan.ctx.font = plan.font(30);
   const bulletIndent = plan.ctx.measureText("• ").width;
   for (const line of message.split("\n")) {
-    const runs = messageRuns(line);
-    // A line that held only a map link has nothing left to show.
-    if (line.trim() !== "" && runs[0].text === "") continue;
     if (line.trim() === "") {
       y += 22;
       continue;
     }
     const bullet = BULLET.test(line);
-    const lines = plan.wrap(runs, 30, inner, 0, bullet ? bulletIndent : 0);
+    const lines = plan.wrap(messageRuns(line), 30, inner, 0, bullet ? bulletIndent : 0);
     // Prose is justified, list items are not — as on /welcome.
     const align = bullet || EMOJI_LED.test(line) ? "left" : "justify";
     y += plan.text(lines, cardX + pad, y, 30, 1.6, INK, align, inner);

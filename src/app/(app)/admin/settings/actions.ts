@@ -30,6 +30,7 @@ import { EMAIL_IMAGE_MAX_BYTES } from "@/lib/email/limits";
 import { GREETING_MAX_LENGTH } from "@/lib/greeting";
 import { HOME_THEME_SETTINGS } from "@/lib/home-themes";
 import { SCHEDULE_LINK_LABEL_MAX, WELCOME_SCHEDULE_MAX } from "@/lib/welcome-schedule";
+import { isMapUrl, WELCOME_MAP_URL_MAX } from "@/lib/welcome-stay";
 import {
   WELCOME_BORDER_RADIUS_MAX,
   WELCOME_BORDER_STYLE_IDS,
@@ -518,6 +519,11 @@ const welcomeScreenSchema = z.object({
     .string()
     .trim()
     .max(WELCOME_MESSAGE_MAX, `Nội dung tối đa ${WELCOME_MESSAGE_MAX} ký tự.`),
+  mapUrl: z
+    .string()
+    .trim()
+    .max(WELCOME_MAP_URL_MAX, `Link bản đồ tối đa ${WELCOME_MAP_URL_MAX} ký tự.`)
+    .refine((value) => value === "" || isMapUrl(value), "Link bản đồ phải bắt đầu bằng https://."),
   // Not trimmed line by line: indentation is what makes a line a detail.
   schedule: z
     .string()
@@ -548,6 +554,7 @@ export async function updateWelcomeScreen(input: unknown): Promise<ActionResult>
       welcomeTheme: values.theme,
       welcomeTitle: values.title,
       welcomeMessage: values.message,
+      welcomeMapUrl: values.mapUrl,
       welcomeSchedule: values.schedule,
       welcomeEmailLinkLabel: values.emailLinkLabel,
       welcomeTextScale: values.textScale,
