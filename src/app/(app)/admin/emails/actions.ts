@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { db } from "@/db";
 import { emailImages, emailJobs, users } from "@/db/schema";
-import { getCurrentUser } from "@/lib/auth/session";
+import { assertSection } from "@/lib/auth/session";
 import { localInputToInstant } from "@/lib/date";
 import { EMAIL_IMAGE_PATH, isEmptyEmailHtml, sanitizeEmailHtml } from "@/lib/email/content";
 import { EMAIL_BODY_MAX, EMAIL_IMAGE_MAX_BYTES, SUBJECT_MAX } from "@/lib/email/limits";
@@ -21,11 +21,8 @@ import {
   type ActionResult,
 } from "@/lib/action-result";
 
-async function assertAdmin() {
-  const user = await getCurrentUser();
-  if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-  if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
-  return user;
+function assertAdmin() {
+  return assertSection("emails");
 }
 
 /** Editor HTML, sanitised on the way in — what is stored is what is sent. */

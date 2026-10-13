@@ -115,6 +115,11 @@ export const users = pgTable(
     // Notice emails (events) can be turned off by the person. Billing emails
     // cannot — they are about money the person owes.
     noticeEmailsEnabled: boolean("notice_emails_enabled").notNull().default(true),
+    // The parts of /admin a full admin handed this person (`src/lib/admin-sections.ts`).
+    // Text rather than a pg enum so a new section is a code change, not a
+    // migration; a value the code no longer knows grants nothing. ADMIN_EMAILS
+    // hold every section whatever this says.
+    adminSections: text("admin_sections").array().notNull().default(sql`'{}'`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

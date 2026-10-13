@@ -8,14 +8,11 @@ import { z } from "zod";
 import { db } from "@/db";
 import { bookings, dayOrders, menuDays, payments } from "@/db/schema";
 import { getUserTotalsForDates } from "@/db/queries/bookings";
-import { getCurrentUser } from "@/lib/auth/session";
+import { assertSection } from "@/lib/auth/session";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 
-async function assertAdmin() {
-  const user = await getCurrentUser();
-  if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-  if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
-  return user;
+function assertAdmin() {
+  return assertSection("payments");
 }
 
 function revalidatePayments() {

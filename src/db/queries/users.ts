@@ -30,6 +30,8 @@ export type Member = {
   photoUrl: string | null;
   birthMonth: number | null;
   birthDay: number | null;
+  /** Raw from the row — run it through `parseAdminSections()` before use. */
+  adminSections: string[];
 };
 
 /** Everyone with an account, for the admin's member list. */
@@ -42,6 +44,7 @@ export async function getAllMembers(): Promise<Member[]> {
       photoUrl: users.photoUrl,
       birthMonth: users.birthMonth,
       birthDay: users.birthDay,
+      adminSections: users.adminSections,
     })
     .from(users)
     .orderBy(asc(users.displayName), asc(users.email));

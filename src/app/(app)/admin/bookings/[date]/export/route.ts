@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth/session";
+import { requireSection } from "@/lib/auth/session";
 import { isServiceDate } from "@/lib/date";
 import { getDayBill } from "@/lib/day-bill";
 import { DEFAULT_SLOT, parseMenuSlot } from "@/lib/menu-slot";
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
  * checks admin itself.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ date: string }> }) {
-  await requireAdmin();
+  await requireSection("bookings");
 
   const { date } = await params;
   if (!isServiceDate(date)) return new Response("Ngày không hợp lệ.", { status: 404 });

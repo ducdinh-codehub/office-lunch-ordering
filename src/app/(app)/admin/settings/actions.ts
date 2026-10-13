@@ -19,7 +19,8 @@ import {
 import { getClaimedDates } from "@/db/queries/payments";
 import { SETTINGS_ID } from "@/db/queries/settings";
 import { RESET_CONFIRM_PHRASE } from "@/lib/admin-reset";
-import { getCurrentUser } from "@/lib/auth/session";
+import { assertSection, isAdminEmail } from "@/lib/auth/session";
+import { ADMIN_SECTIONS, parseAdminSections } from "@/lib/admin-sections";
 import { birthdayField } from "@/lib/birthday";
 import { isServiceDate, serviceDateRange, type ServiceDate } from "@/lib/date";
 import { ADMIN_DISCOUNT_MAX_DAYS, ADMIN_DISCOUNT_NOTE_MAX } from "@/lib/admin-discount";
@@ -64,9 +65,7 @@ const MAX_IMAGE_BYTES = 1_000_000;
 /** Stores the admin's own bank QR photo. */
 export async function uploadBankQr(formData: FormData): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) fail("Hãy chọn một ảnh mã QR.");
@@ -99,9 +98,7 @@ export async function uploadBankQr(formData: FormData): Promise<ActionResult> {
 /** Removes the uploaded QR, handing the payments page back to VietQR. */
 export async function removeBankQr(): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     await db
       .update(appSettings)
@@ -118,9 +115,7 @@ export async function removeBankQr(): Promise<ActionResult> {
 
 export async function updateAppSettings(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const values = settingsSchema.parse(input);
 
@@ -150,9 +145,7 @@ const homeThemeSchema = z.object({
 /** Switches the seasonal backdrop on the diner pages, or turns it off. */
 export async function updateHomeTheme(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { homeTheme } = homeThemeSchema.parse(input);
 
@@ -188,9 +181,7 @@ const greetingSchema = z.object({
 /** Sets the home-page wish; an empty string takes the banner down. */
 export async function updateGreeting(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { greetingMessage } = greetingSchema.parse(input);
 
@@ -241,9 +232,7 @@ const renameMemberSchema = z.object({
  */
 export async function renameMember(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { userId, displayName } = renameMemberSchema.parse(input);
 
@@ -281,9 +270,7 @@ const memberBirthdaySchema = z.object({
  */
 export async function setMemberBirthday(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { userId, birthday } = memberBirthdaySchema.parse(input);
 
@@ -306,11 +293,47 @@ export async function setMemberBirthday(input: unknown): Promise<ActionResult> {
   }
 }
 
+const memberSectionsSchema = z.object({
+  userId: z.string().uuid(),
+  sections: z.array(z.enum(ADMIN_SECTIONS)).max(ADMIN_SECTIONS.length),
+});
+
+/**
+ * Hands someone parts of /admin, or takes them back. Full admins only — a
+ * person holding Cài đặt must not be able to grant themselves the rest.
+ * ADMIN_EMAILS are refused: they hold everything whatever their row says, so
+ * a change would show here and do nothing.
+ */
+export async function setMemberAdminSections(input: unknown): Promise<ActionResult> {
+  try {
+    await assertSection();
+
+    const { userId, sections } = memberSectionsSchema.parse(input);
+
+    const target = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (!target) fail("Không tìm thấy người này.");
+    if (isAdminEmail(target.email)) fail("Quản lý chính đã có mọi quyền.");
+
+    await db
+      .update(users)
+      .set({ adminSections: parseAdminSections(sections) })
+      .where(eq(users.id, userId));
+
+    // Their navigation changes on every page.
+    revalidatePath("/", "layout");
+    return actionOk();
+  } catch (cause) {
+    if (cause instanceof z.ZodError) {
+      return { ok: false, error: cause.issues[0]?.message ?? "Quyền không hợp lệ." };
+    }
+    return toActionError(cause, "Không lưu được quyền.");
+  }
+}
+
 export async function resetOrderHistory(input: unknown): Promise<ActionResult<number>> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    // Full admins only: it wipes every order, which no section covers.
+    await assertSection();
 
     const { confirm } = resetSchema.parse(input);
     if (confirm.trim() !== RESET_CONFIRM_PHRASE) {
@@ -364,9 +387,7 @@ const luckyEnvelopeSchema = z.object({ enabled: z.boolean() });
  */
 export async function setLuckyEnvelopeEnabled(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { enabled } = luckyEnvelopeSchema.parse(input);
 
@@ -393,9 +414,7 @@ export async function setLuckyEnvelopeEnabled(input: unknown): Promise<ActionRes
  */
 export async function resetLuckyEnvelopes(): Promise<ActionResult<number>> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const removed = await db.delete(luckyEnvelopes).returning({ id: luckyEnvelopes.id });
 
@@ -417,9 +436,7 @@ const gymPromoSchema = z.object({
  */
 export async function setGymPromoEnabled(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     // Not this deployment's to promote — see serverEnv.gymTimeUrl.
     if (!serverEnv.gymTimeUrl) fail("Gym Time không có trên hệ thống này.");
@@ -459,9 +476,7 @@ const bannerSlot = z.enum(["header", "billing", "footer"]);
  */
 export async function setEmailBanner(formData: FormData): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    const user = await assertSection("settings");
 
     const slot = bannerSlot.parse(formData.get("slot"));
     const file = formData.get("file");
@@ -493,9 +508,7 @@ export async function setEmailBanner(formData: FormData): Promise<ActionResult> 
 /** Takes one banner off every email from now on. */
 export async function removeEmailBanner(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { slot } = z.object({ slot: bannerSlot }).parse(input);
     await db
@@ -544,9 +557,7 @@ const welcomeScreenSchema = z.object({
 /** Saves the welcome screen's switch, theme, text and frame in one go. */
 export async function updateWelcomeScreen(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const values = welcomeScreenSchema.parse(input);
     const change = {
@@ -590,9 +601,7 @@ export async function updateWelcomeScreen(input: unknown): Promise<ActionResult>
  */
 export async function setWelcomeImage(formData: FormData): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    const user = await assertSection("settings");
 
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) fail("Hãy chọn một ảnh.");
@@ -622,9 +631,7 @@ export async function setWelcomeImage(formData: FormData): Promise<ActionResult>
 /** Takes the picture off the welcome screen. */
 export async function removeWelcomeImage(): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     await db
       .update(appSettings)
@@ -680,9 +687,7 @@ export async function setAdminDiscount(
   input: unknown,
 ): Promise<ActionResult<SetAdminDiscountResult>> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { userId, from, to, percent, note } = adminDiscountSchema.parse(input);
     const dates = serviceDateRange(from, to, ADMIN_DISCOUNT_MAX_DAYS + 1);
@@ -731,9 +736,7 @@ export async function setAdminDiscount(
  */
 export async function removeAdminDiscount(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("settings");
 
     const { id } = z.object({ id: z.string().uuid() }).parse(input);
 

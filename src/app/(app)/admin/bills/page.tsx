@@ -1,7 +1,7 @@
 import { ManualBillEditor } from "@/components/admin/manual-bill-editor";
 import { listManualBills } from "@/db/queries/manual-bills";
 import { getAllMembers } from "@/db/queries/users";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireSection } from "@/lib/auth/session";
 import { shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
 import { pageTitle } from "@/lib/app-name";
@@ -13,7 +13,7 @@ export const metadata = { title: pageTitle("Hoá đơn riêng") };
 const LIST_LOOKBACK_DAYS = 60;
 
 export default async function AdminBillsPage() {
-  await requireAdmin();
+  await requireSection("bills");
   const today = todayServiceDate();
   const [members, bills] = await Promise.all([
     getAllMembers(),

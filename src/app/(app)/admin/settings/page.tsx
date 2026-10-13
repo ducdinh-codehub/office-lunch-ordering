@@ -23,8 +23,9 @@ import {
   welcomeImageUrl,
 } from "@/lib/welcome-screen";
 import { fallbackDisplayName } from "@/lib/display-name";
-import { isAdminEmail, requireAdmin } from "@/lib/auth/session";
+import { isAdminEmail, requireSection } from "@/lib/auth/session";
 import { toBirthday } from "@/lib/birthday";
+import { parseAdminSections } from "@/lib/admin-sections";
 import { pageTitle } from "@/lib/app-name";
 import { todayServiceDate } from "@/lib/date";
 import { serverEnv } from "@/env";
@@ -34,7 +35,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: pageTitle("Cài đặt") };
 
 export default async function AdminSettingsPage() {
-  await requireAdmin();
+  const viewer = await requireSection("settings");
   const today = todayServiceDate();
   const [settings, [{ count: bookingCount }], members, envelopeStats, bannerIds, discounts] =
     await Promise.all([
@@ -125,13 +126,16 @@ export default async function AdminSettingsPage() {
           email: member.email,
           photoUrl: member.photoUrl,
           birthday: toBirthday(member.birthMonth, member.birthDay),
-          // Admin is ADMIN_EMAILS, evaluated here on the server — there is no
-          // role column and nothing admin-ish is sent to the client but this.
+          // A full admin is ADMIN_EMAILS, evaluated here on the server; the
+          // sections anyone else holds come from their row.
           isAdmin: isAdminEmail(member.email),
+          sections: parseAdminSections(member.adminSections),
         }))}
+        canEditSections={viewer.isAdmin}
       />
 
-      <ResetOrders bookingCount={bookingCount} />
+      {/* Wiping every order is beyond any section: full admins only. */}
+      {viewer.isAdmin && <ResetOrders bookingCount={bookingCount} />}
     </div>
   );
 }

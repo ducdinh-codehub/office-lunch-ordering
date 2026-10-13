@@ -22,6 +22,7 @@ import {
   getKitchenSummary,
 } from "@/db/queries/bookings";
 import { getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
+import { canManage, requireSection } from "@/lib/auth/session";
 import { SlotTabs, type SlotTab } from "@/components/menu/slot-tabs";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import {
@@ -53,6 +54,7 @@ export default async function AdminDayBookingsPage({
   params: Promise<{ date: string }>;
   searchParams: Promise<{ for?: string; suat?: string; buoi?: string }>;
 }) {
+  const viewer = await requireSection("bookings");
   const { date } = await params;
   if (!isServiceDate(date)) notFound();
 
@@ -158,14 +160,16 @@ export default async function AdminDayBookingsPage({
             <ImageDown className="size-4" />
             Tải ảnh hóa đơn
           </Button>
-          <LinkButton
-            href={withSlot(`/admin/menu?date=${date}`, slot)}
-            variant="outline"
-            size="sm"
-          >
-            <ChevronLeft className="size-4" />
-            Sửa thực đơn
-          </LinkButton>
+          {canManage(viewer, "menu") && (
+            <LinkButton
+              href={withSlot(`/admin/menu?date=${date}`, slot)}
+              variant="outline"
+              size="sm"
+            >
+              <ChevronLeft className="size-4" />
+              Sửa thực đơn
+            </LinkButton>
+          )}
         </div>
       </div>
 

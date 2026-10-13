@@ -2,16 +2,17 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { emailImages } from "@/db/schema";
-import { getCurrentUser } from "@/lib/auth/session";
+import { canManage, getCurrentUser } from "@/lib/auth/session";
 
 /**
- * Serves a picture uploaded for an email, to the admin only — the editor and
- * the email previews are the only places it is shown in the app. Recipients
+ * Serves a picture uploaded for an email, to whoever holds Email or Cài đặt
+ * only — the editor, the email previews and the banner settings are the only
+ * places it is shown in the app. Recipients
  * never load it from here: sending attaches it to the email itself.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
-  if (!user?.isAdmin) return new Response("Not found", { status: 404 });
+  if (!canManage(user, "emails") && !canManage(user, "settings")) return new Response("Not found", { status: 404 });
 
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) return new Response("Not found", { status: 404 });
