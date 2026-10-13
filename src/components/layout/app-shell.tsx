@@ -15,6 +15,7 @@ import { SignOutButton } from "./sign-out-button";
 import { MobileNav } from "./mobile-nav";
 import { DonateButton } from "./donate-button";
 import { APP_SHORT_NAME } from "@/lib/app-name";
+import { ADMIN_SECTION_INFO, type AdminSection } from "@/lib/admin-sections";
 import type { SessionUser } from "@/lib/auth/session";
 
 const userLinks = [
@@ -24,14 +25,14 @@ const userLinks = [
   { href: "/race", label: "Đua", icon: Flag },
 ];
 
-const adminLinks = [
-  { href: "/admin/menu", label: "Thực đơn", icon: UtensilsCrossed },
-  { href: "/admin/bookings", label: "Đơn hàng", icon: ClipboardList },
-  { href: "/admin/payments", label: "Bảng thu", icon: ReceiptText },
-  { href: "/admin/bills", label: "Hoá đơn riêng", icon: NotebookPen },
-  { href: "/admin/emails", label: "Email", icon: Mail },
-  { href: "/admin/settings", label: "Cài đặt", icon: Settings2 },
-];
+const adminIcons: Record<AdminSection, typeof UtensilsCrossed> = {
+  menu: UtensilsCrossed,
+  bookings: ClipboardList,
+  payments: ReceiptText,
+  bills: NotebookPen,
+  emails: Mail,
+  settings: Settings2,
+};
 
 export function AppShell({
   user,
@@ -46,6 +47,13 @@ export function AppShell({
   donate: React.ComponentProps<typeof DonateButton> | null;
   children: React.ReactNode;
 }) {
+  // Only the sections this person holds — every one for a full admin.
+  const adminLinks = user.sections.map((section) => ({
+    href: ADMIN_SECTION_INFO[section].href,
+    label: ADMIN_SECTION_INFO[section].label,
+    icon: adminIcons[section],
+  }));
+
   return (
     <div className="bg-muted/30 min-h-dvh">
       <header className="bg-background/80 sticky top-0 z-40 border-b backdrop-blur">
@@ -61,9 +69,7 @@ export function AppShell({
           <div className="flex min-w-0 flex-1 items-center sm:hidden">
             <MobileNav
               userLinks={userLinks.map(({ href, label }) => ({ href, label }))}
-              adminLinks={
-                user.isAdmin ? adminLinks.map(({ href, label }) => ({ href, label })) : []
-              }
+              adminLinks={adminLinks.map(({ href, label }) => ({ href, label }))}
             />
           </div>
 
@@ -79,7 +85,7 @@ export function AppShell({
                 {label}
               </Link>
             ))}
-            {user.isAdmin && (
+            {adminLinks.length > 0 && (
               <>
                 <span className="bg-border mx-1 h-5 w-px" aria-hidden />
                 {adminLinks.map(({ href, label, icon: Icon }) => (

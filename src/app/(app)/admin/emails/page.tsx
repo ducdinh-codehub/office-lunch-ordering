@@ -12,7 +12,7 @@ import {
 } from "@/db/queries/emails";
 import { serverEnv } from "@/env";
 import { pageTitle } from "@/lib/app-name";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireSection } from "@/lib/auth/session";
 import { formatInstant, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { isEmailConfigured } from "@/lib/email/mailer";
 import { EMAIL_KIND_LABEL, emailAudienceText, emailJobTitle } from "@/lib/email/labels";
@@ -31,7 +31,7 @@ export default async function AdminEmailsPage({
   /** `tu` names an earlier job whose words seed the composer — "Dùng lại nội dung". */
   searchParams: Promise<{ tu?: string }>;
 }) {
-  await requireAdmin();
+  await requireSection("emails");
   const { tu } = await searchParams;
   const [members, debtors, scheduled, history, bannerIds, source, settings] = await Promise.all([
     getEmailMembers(),

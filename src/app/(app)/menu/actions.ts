@@ -9,7 +9,7 @@ import { bookings, menuDays, menuItems, users, SET_CATEGORIES } from "@/db/schem
 import { isBookingOpen, bookingClosedReason } from "@/db/queries/menu";
 import { getSetSelectionCounts, syncDayOrder } from "@/db/queries/bookings";
 import { maxSetPicks, offersSet, resolveSetTier, setTiers } from "@/lib/set-tiers";
-import { getCurrentUser, type SessionUser } from "@/lib/auth/session";
+import { canManage, getCurrentUser, type SessionUser } from "@/lib/auth/session";
 import {
   actionOk,
   fail,
@@ -44,9 +44,9 @@ const CATEGORY_LABEL = {
 /**
  * Who this booking is for.
  *
- * An admin may order on someone else's behalf — the colleague who asked in
+ * Whoever holds Đơn hàng may order on someone else's behalf — the colleague who asked in
  * person, or the one who missed the cutoff. Everyone else may only ever book
- * for themselves, so an `onBehalfOf` from a non-admin is refused rather than
+ * for themselves, so an `onBehalfOf` from anyone else is refused rather than
  * ignored. The override also lifts the cutoff: booking late on someone's behalf
  * is the whole reason the admin is doing it by hand.
  */
@@ -57,7 +57,7 @@ async function resolveDiner(
   if (!onBehalfOf || onBehalfOf === actor.id) {
     return { userId: actor.id, overrideCutoff: false };
   }
-  if (!actor.isAdmin) fail("Bạn không có quyền đặt món cho người khác.");
+  if (!canManage(actor, "bookings")) fail("Bạn không có quyền đặt món cho người khác.");
 
   const target = await db.query.users.findFirst({ where: eq(users.id, onBehalfOf) });
   if (!target) fail("Không tìm thấy người này.");

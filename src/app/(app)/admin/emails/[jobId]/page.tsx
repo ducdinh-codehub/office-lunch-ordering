@@ -9,7 +9,7 @@ import { LinkButton } from "@/components/ui/link-button";
 import { getEmailJob, getEmailJobRuns, getEmailRecipientNames } from "@/db/queries/emails";
 import { serverEnv } from "@/env";
 import { pageTitle } from "@/lib/app-name";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireSection } from "@/lib/auth/session";
 import { formatInstant, todayServiceDate } from "@/lib/date";
 import { fallbackDisplayName } from "@/lib/display-name";
 import {
@@ -30,7 +30,7 @@ export const metadata = { title: pageTitle("Chi tiết email") };
 const DELIVERY_LABEL = { sent: "Đã gửi", failed: "Lỗi", pending: "Đang gửi" } as const;
 
 export default async function EmailJobPage({ params }: { params: Promise<{ jobId: string }> }) {
-  const admin = await requireAdmin();
+  const admin = await requireSection("emails");
   const { jobId } = await params;
   if (!/^[0-9a-f-]{36}$/.test(jobId)) notFound();
 

@@ -7,7 +7,7 @@ import { LinkButton } from "@/components/ui/link-button";
 import { getEmailRunHistory } from "@/db/queries/emails";
 import type { EmailRunTrigger } from "@/db/schema";
 import { pageTitle } from "@/lib/app-name";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireSection } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,7 @@ export default async function EmailHistoryPage({
 }: {
   searchParams: Promise<{ nguon?: string; trang?: string }>;
 }) {
-  await requireAdmin();
+  await requireSection("emails");
   const { nguon, trang } = await searchParams;
   const source = SOURCES.find((item) => item.value === nguon) ?? SOURCES[0];
   const page = Math.max(1, Number.parseInt(trang ?? "1", 10) || 1);

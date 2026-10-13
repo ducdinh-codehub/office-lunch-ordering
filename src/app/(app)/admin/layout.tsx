@@ -1,10 +1,11 @@
-import { requireAdmin } from "@/lib/auth/session";
+import { requireAnySection } from "@/lib/auth/session";
 
 /**
- * Guards the whole /admin subtree. This is a convenience, not the security
- * boundary — every admin Server Action re-checks with `requireAdmin()` itself.
+ * Guards the whole /admin subtree for anyone holding at least one section.
+ * This is a convenience, not the security boundary — every page checks its own
+ * section with `requireSection()`, and every Server Action with `assertSection()`.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  await requireAdmin();
+  await requireAnySection();
   return <>{children}</>;
 }

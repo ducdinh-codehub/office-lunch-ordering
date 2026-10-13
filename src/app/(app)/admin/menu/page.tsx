@@ -12,6 +12,7 @@ import { db } from "@/db";
 import { bookings } from "@/db/schema";
 import { getAllMenuDays, getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
 import { getAppSettings } from "@/db/queries/settings";
+import { canManage, requireSection } from "@/lib/auth/session";
 import {
   DEFAULT_SLOT,
   MENU_SLOTS,
@@ -48,6 +49,7 @@ export default async function AdminMenuPage({
 }: {
   searchParams: Promise<{ date?: string; buoi?: string }>;
 }) {
+  const viewer = await requireSection("menu");
   const { date, buoi } = await searchParams;
   const today = todayServiceDate();
 
@@ -107,14 +109,16 @@ export default async function AdminMenuPage({
           {slot !== DEFAULT_SLOT && day && (
             <DeleteMenuDay serviceDate={serviceDate} slot={slot} />
           )}
-          <LinkButton
-            href={withSlot(`/admin/bookings/${serviceDate}`, slot)}
-            variant="outline"
-            size="sm"
-          >
-            <ClipboardList className="size-4" />
-            Danh sách bếp
-          </LinkButton>
+          {canManage(viewer, "bookings") && (
+            <LinkButton
+              href={withSlot(`/admin/bookings/${serviceDate}`, slot)}
+              variant="outline"
+              size="sm"
+            >
+              <ClipboardList className="size-4" />
+              Danh sách bếp
+            </LinkButton>
+          )}
         </div>
       </div>
 

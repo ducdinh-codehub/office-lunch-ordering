@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PaymentRoster, type RosterRowData } from "@/components/admin/payment-roster";
 import { PendingClaims } from "@/components/admin/pending-claims";
 import { getPaymentRoster, getPendingClaims } from "@/db/queries/payments";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireSection } from "@/lib/auth/session";
 import {
   formatServiceDate,
   isServiceDate,
@@ -33,7 +33,7 @@ export default async function AdminPaymentsPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  await requireAdmin();
+  await requireSection("payments");
   const { from, to } = await searchParams;
   const range = resolveRange(from, to);
   const today = todayServiceDate();

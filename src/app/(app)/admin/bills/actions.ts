@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { manualBillItems, manualBills, users } from "@/db/schema";
 import { getClaimedDates } from "@/db/queries/payments";
-import { getCurrentUser } from "@/lib/auth/session";
+import { assertSection } from "@/lib/auth/session";
 import { isServiceDate } from "@/lib/date";
 import {
   MANUAL_BILL_ITEM_NAME_MAX,
@@ -77,9 +77,7 @@ function revalidateMoneyPages() {
  */
 export async function createManualBill(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    const user = await assertSection("bills");
 
     const { userId, serviceDate, serviceTime, title, items } = manualBillSchema.parse(input);
 
@@ -139,9 +137,7 @@ export async function createManualBill(input: unknown): Promise<ActionResult> {
  */
 export async function deleteManualBill(input: unknown): Promise<ActionResult> {
   try {
-    const user = await getCurrentUser();
-    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
-    if (!user.isAdmin) fail("Bạn không có quyền thực hiện thao tác này.");
+    await assertSection("bills");
 
     const { id } = z.object({ id: z.string().uuid() }).parse(input);
 

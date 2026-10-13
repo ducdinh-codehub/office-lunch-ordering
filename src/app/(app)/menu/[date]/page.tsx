@@ -7,7 +7,7 @@ import { SlotTabs, type SlotTab } from "@/components/menu/slot-tabs";
 import { CloseButton } from "@/components/layout/close-button";
 import { getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
 import { getUserBookingsForDay } from "@/db/queries/bookings";
-import { requireUser } from "@/lib/auth/session";
+import { canManage, requireUser } from "@/lib/auth/session";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import {
   MENU_SLOTS,
@@ -63,18 +63,20 @@ export default async function MenuDatePage({
     resolveActiveSlot(allDays);
   const day = await getMenuDay(date, slot);
 
-  // Drafts are admin-only; to everyone else the day simply has no menu.
-  const visibleDay = day && day.status === "draft" && !user.isAdmin ? null : day;
+  // Drafts are for whoever edits the menu; to everyone else the day simply
+  // has no menu.
+  const seesDrafts = canManage(user, "menu");
+  const visibleDay = day && day.status === "draft" && !seesDrafts ? null : day;
 
   // A tab per sitting this date actually sells. Drafts count only for the
-  // admin, so nobody else is offered a tab that leads to an empty card. With
+  // menu's editors, so nobody else is offered a tab that leads to an empty card. With
   // lunch alone SlotTabs renders nothing.
   // In the order view, only the sittings you ordered from — plus the one on
   // screen, so emptying it does not leave you on a page with no tab for it.
   const tabs: SlotTab[] = MENU_SLOTS.filter((candidate) =>
     allDays.some(
       (existing) =>
-        existing.slot === candidate && (existing.status !== "draft" || user.isAdmin),
+        existing.slot === candidate && (existing.status !== "draft" || seesDrafts),
     ),
   )
     .filter((candidate) => !orderView || candidate === slot || orderedSlots.includes(candidate))

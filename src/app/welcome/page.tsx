@@ -8,7 +8,7 @@ import { WelcomeBackdrop } from "@/components/welcome/welcome-backdrop";
 import { WelcomeContentBox } from "@/components/welcome/welcome-content-box";
 import { getAppSettings } from "@/db/queries/settings";
 import { pageTitle } from "@/lib/app-name";
-import { getCurrentUser } from "@/lib/auth/session";
+import { canManage, getCurrentUser } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 import { parseSchedule } from "@/lib/welcome-schedule";
 import {
@@ -41,7 +41,7 @@ export default async function WelcomePage({
     searchParams,
   ]);
   const schedule = parseSchedule(settings.welcomeSchedule);
-  const preview = params["xem-truoc"] === "1" && user?.isAdmin === true;
+  const preview = params["xem-truoc"] === "1" && canManage(user, "settings");
   // The notice email's "Cùng xem lịch trình nào" link: shown to anyone, the
   // itinerary already open, for as long as there is one.
   const openSchedule = params["lich-trinh"] === "1" && schedule.length > 0;

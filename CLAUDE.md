@@ -75,11 +75,23 @@ the new session lands on `/welcome`, and nothing there notices — so
 Its picture is an `email_images` row served publicly by `/api/welcome-image/<id>`
 only while `welcome_image_id` points at it; `?xem-truoc=1` lets an admin preview.
 
-**`requireUser()` / `requireAdmin()` must be called at the top of every Server
-Action, not only in layouts.** Middleware and layout checks are routing
-conveniences; actions are separately addressable endpoints. Admin status is
-`ADMIN_EMAILS.includes(email)` evaluated server-side — there is no role column and
-no client-visible admin flag.
+**Every Server Action checks its own permission at the top** — `assertSection()`
+in admin actions, `requireUser()` elsewhere — not only the layouts. Middleware
+and layout checks are routing conveniences; actions are separately addressable
+endpoints.
+
+Admin is split into **sections** (`src/lib/admin-sections.ts`): menu, bookings,
+payments, bills, emails, settings — one per `/admin` page. A *full admin* is
+`ADMIN_EMAILS.includes(email)`, evaluated server-side, and holds every section
+no matter what. Anyone else holds the sections in `users.admin_sections`, which a
+full admin toggles in the member list at `/admin/settings`. `SessionUser.isAdmin`
+means full admin; check a section with `canManage(user, section)`. The guards:
+`requireSection()` on every `/admin` page (the layout's `requireAnySection()`
+only checks for *some* section), `assertSection("x")` in actions, and
+`assertSection()` with no argument for full-admin-only work — changing who holds
+what (so Cài đặt can never grant itself more) and wiping order history. Checks
+outside `/admin` follow the section they belong to: ordering on someone's behalf
+is bookings, seeing a draft menu is menu, previewing `/welcome` is settings.
 
 ### Database
 
