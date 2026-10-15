@@ -1,11 +1,17 @@
 import "server-only";
 
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
-import type { PaymentState } from "@/db/queries/payments";
 import { APP_SHORT_NAME } from "@/lib/app-name";
+import {
+  COLOR,
+  ManualBillRows,
+  STATE,
+  SectionTitle,
+  lines,
+  loadBillFonts,
+  manualBillRowsHeight,
+} from "@/lib/bill-image-parts";
 import type { DayBill, DayBillDiner } from "@/lib/day-bill";
 import { formatInstant, formatServiceDate } from "@/lib/date";
 import { KITCHEN_SECTIONS } from "@/lib/kitchen-bill";
@@ -30,44 +36,6 @@ const PAD = 40;
 const DISH_CHARS_PER_LINE = 62;
 const KITCHEN_CHARS_PER_LINE = 80;
 
-const COLOR = {
-  ink: "#18181b",
-  muted: "#71717a",
-  line: "#e4e4e7",
-  soft: "#f4f4f5",
-  accent: "#b45309",
-};
-
-const STATE: Record<PaymentState, { label: string; bg: string; fg: string }> = {
-  confirmed: { label: "Đã trả", bg: "#d1fae5", fg: "#047857" },
-  pending: { label: "Chờ xác nhận", bg: "#fef3c7", fg: "#b45309" },
-  rejected: { label: "Không tìm thấy", bg: "#fee2e2", fg: "#b91c1c" },
-  unpaid: { label: "Chưa trả", bg: COLOR.soft, fg: COLOR.muted },
-};
-
-// Bundled rather than fetched: the default font has no Vietnamese diacritics.
-// Read relative to the project root, which Next traces into the deployment
-// (see outputFileTracingIncludes in next.config.ts).
-const FONT_DIR = join(process.cwd(), "src/assets/fonts");
-let fonts: Promise<{ name: string; data: Buffer; weight: 400 | 600 }[]> | null = null;
-function loadFonts() {
-  fonts ??= Promise.all([
-    readFile(join(FONT_DIR, "BeVietnamPro-Regular.ttf")).then((data) => ({
-      name: "Be Vietnam Pro",
-      data,
-      weight: 400 as const,
-    })),
-    readFile(join(FONT_DIR, "BeVietnamPro-SemiBold.ttf")).then((data) => ({
-      name: "Be Vietnam Pro",
-      data,
-      weight: 600 as const,
-    })),
-  ]);
-  return fonts;
-}
-
-const lines = (text: string, perLine: number) => Math.max(1, Math.ceil(text.length / perLine));
-
 function dinerHeight(diner: DayBillDiner) {
   const dishLines = diner.dishes.length ? lines(diner.dishes.join(", "), DISH_CHARS_PER_LINE) : 0;
   const noteLines = diner.notes.length ? lines(diner.notes.join("; "), DISH_CHARS_PER_LINE) : 0;
@@ -75,7 +43,7 @@ function dinerHeight(diner: DayBillDiner) {
 }
 
 export async function renderDayBillImage(bill: DayBill): Promise<ImageResponse> {
-  const { kitchen, diners } = bill;
+  const { kitchen, diners, manualBills } = bill;
 
   const setSections = KITCHEN_SECTIONS.filter(({ category }) =>
     ["main", "side", "veg"].includes(category),
@@ -101,6 +69,7 @@ export async function renderDayBillImage(bill: DayBill): Promise<ImageResponse> 
     (diners.length === 0
       ? 110
       : 58 + diners.reduce((total, diner) => total + dinerHeight(diner), 0) + 50) +
+    (manualBills.length === 0 ? 0 : 58 + manualBillRowsHeight(manualBills)) +
     (kitchen.ordered.length === 0
       ? 0
       : 58 +
@@ -250,6 +219,14 @@ export async function renderDayBillImage(bill: DayBill): Promise<ImageResponse> 
         </div>
       )}
 
+      {/* The date's hand-written bills — apart from the sitting, never in its totals. */}
+      {manualBills.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <SectionTitle>Hóa đơn riêng · cả ngày</SectionTitle>
+          <ManualBillRows bills={manualBills} states={bill.manualStates} />
+        </div>
+      )}
+
       {/* The quán's side */}
       {kitchen.ordered.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -313,27 +290,8 @@ export async function renderDayBillImage(bill: DayBill): Promise<ImageResponse> 
     {
       width: WIDTH,
       height,
-      fonts: await loadFonts(),
+      fonts: await loadBillFonts(),
     },
-  );
-}
-
-function SectionTitle({ children }: { children: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        marginTop: 28,
-        marginBottom: 10,
-        fontSize: 13,
-        fontWeight: 600,
-        letterSpacing: 1,
-        textTransform: "uppercase",
-        color: COLOR.muted,
-      }}
-    >
-      {children}
-    </div>
   );
 }
 

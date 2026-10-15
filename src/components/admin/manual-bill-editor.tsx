@@ -9,19 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { createManualBill, deleteManualBill } from "@/app/(app)/admin/bills/actions";
 import { formatServiceDate, type ServiceDate } from "@/lib/date";
 import {
   formatServiceTime,
   MANUAL_BILL_ITEM_NAME_MAX,
   MANUAL_BILL_MAX_ITEMS,
+  MANUAL_BILL_MAX_PEOPLE,
   MANUAL_BILL_TITLE_MAX,
 } from "@/lib/manual-bill";
 import { formatVnd } from "@/lib/money";
@@ -58,8 +53,18 @@ function blankLine(): DraftLine {
   return { key: nextKey, name: "", quantity: "1", price: "" };
 }
 
+/** Lower-cased and stripped of diacritics, so "duc" finds "Đức". */
+function searchable(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase();
+}
+
 /**
- * Writing a bill for one person by hand: who, which date (and optionally what
+ * Writing a bill by hand: for whom — one person or several, each of whom gets
+ * a bill of their own with the same lines — which date (and optionally what
  * time), and the lines with their names and prices. The total shown here is a
  * preview — the server sums the lines again before saving.
  */
@@ -78,20 +83,40 @@ export function ManualBillEditor({
   const [isPending, startTransition] = useTransition();
   const [removingId, setRemovingId] = useState<string | null>(null);
 
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userIds, setUserIds] = useState<Set<string>>(() => new Set());
+  const [memberQuery, setMemberQuery] = useState("");
   const [serviceDate, setServiceDate] = useState(today);
   const [serviceTime, setServiceTime] = useState("");
   const [title, setTitle] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
 
-  // Two people can share a name; the email tells them apart, on the chosen
-  // value as well as in the list.
-  const memberItems = members.map((member) => ({
-    value: member.id,
-    label: `${member.name} · ${member.email}`,
-    name: member.name,
-    email: member.email,
-  }));
+  const query = searchable(memberQuery.trim());
+  const visibleMembers = query
+    ? members.filter((member) => searchable(`${member.name} ${member.email}`).includes(query))
+    : members;
+  const allVisibleChosen =
+    visibleMembers.length > 0 && visibleMembers.every((member) => userIds.has(member.id));
+
+  function toggleMember(id: string) {
+    setUserIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  /** Ticks every member the search shows, or unticks them if all already are. */
+  function toggleVisible() {
+    setUserIds((current) => {
+      const next = new Set(current);
+      for (const member of visibleMembers) {
+        if (allVisibleChosen) next.delete(member.id);
+        else next.add(member.id);
+      }
+      return next;
+    });
+  }
 
   const previewVnd = lines.reduce(
     (total, line) => total + (Number(line.quantity) || 0) * (parseVnd(line.price) ?? 0),
@@ -120,7 +145,7 @@ export function ManualBillEditor({
 
     startTransition(async () => {
       const result = await createManualBill({
-        userId: userId ?? "",
+        userIds: [...userIds],
         serviceDate,
         serviceTime,
         title,
@@ -130,7 +155,10 @@ export function ManualBillEditor({
         toast.error(result.error);
         return;
       }
-      toast.success("Đã ghi hoá đơn.");
+      toast.success(
+        userIds.size > 1 ? `Đã ghi ${userIds.size} hoá đơn, mỗi người một.` : "Đã ghi hoá đơn.",
+      );
+      setUserIds(new Set());
       setTitle("");
       setLines([blankLine()]);
       router.refresh();
@@ -162,33 +190,76 @@ export function ManualBillEditor({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground text-sm">
-            Lì xì, sinh nhật và giảm giá riêng của ngày đó cũng trừ vào hoá đơn này. Ngày người đó
-            đã thanh toán thì không ghi thêm được.
+            Lì xì, sinh nhật và giảm giá riêng của ngày đó cũng trừ vào hoá đơn này. Ai đã thanh
+            toán ngày đó thì không ghi thêm được.
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="bill-member">Người trả</Label>
-              <Select
-                items={memberItems}
-                value={userId}
-                onValueChange={(value) => setUserId(value)}
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="bill-member-search">
+                  Người trả{userIds.size > 0 && ` (${userIds.size} người)`}
+                </Label>
+                <div className="flex gap-1">
+                  {userIds.size > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() => setUserIds(new Set())}
+                    >
+                      Bỏ chọn hết
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isPending || visibleMembers.length === 0}
+                    onClick={toggleVisible}
+                  >
+                    {allVisibleChosen ? "Bỏ chọn" : "Chọn"} {query ? "kết quả" : "tất cả"}
+                  </Button>
+                </div>
+              </div>
+              <Input
+                id="bill-member-search"
+                value={memberQuery}
+                placeholder="Tìm theo tên hoặc email"
                 disabled={isPending}
-              >
-                <SelectTrigger id="bill-member" className="w-full">
-                  <SelectValue placeholder="Chọn một người" />
-                </SelectTrigger>
-                <SelectContent>
-                  {memberItems.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{item.name}</span>
-                        <span className="text-muted-foreground truncate text-xs">{item.email}</span>
+                onChange={(event) => setMemberQuery(event.target.value)}
+              />
+              {/* Two people can share a name; the email tells them apart. */}
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border p-1">
+                {visibleMembers.length === 0 ? (
+                  <p className="text-muted-foreground px-2 py-3 text-center text-sm">
+                    Không tìm thấy ai.
+                  </p>
+                ) : (
+                  visibleMembers.map((member) => (
+                    <label
+                      key={member.id}
+                      className="hover:bg-accent/50 flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5"
+                    >
+                      <Checkbox
+                        checked={userIds.has(member.id)}
+                        disabled={isPending}
+                        onCheckedChange={() => toggleMember(member.id)}
+                      />
+                      <span className="flex min-w-0 flex-col text-sm">
+                        <span className="truncate">{member.name}</span>
+                        <span className="text-muted-foreground truncate text-xs">
+                          {member.email}
+                        </span>
                       </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </label>
+                  ))
+                )}
+              </div>
+              {userIds.size > 1 && (
+                <p className="text-muted-foreground text-xs">
+                  Mỗi người nhận một hoá đơn riêng với cùng các món dưới đây.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -285,11 +356,26 @@ export function ManualBillEditor({
 
           <div className="flex items-center justify-between border-t pt-4">
             <span className="text-sm">
-              Tổng: <span className="font-semibold tabular-nums">{formatVnd(previewVnd)}</span>
+              {userIds.size > 1 ? "Mỗi người: " : "Tổng: "}
+              <span className="font-semibold tabular-nums">{formatVnd(previewVnd)}</span>
+              {userIds.size > 1 && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {userIds.size} người: {formatVnd(previewVnd * userIds.size)}
+                </span>
+              )}
             </span>
-            <Button disabled={isPending || !userId || !serviceDate} onClick={save}>
+            <Button
+              disabled={
+                isPending ||
+                userIds.size === 0 ||
+                userIds.size > MANUAL_BILL_MAX_PEOPLE ||
+                !serviceDate
+              }
+              onClick={save}
+            >
               {isPending && removingId === null && <Loader2 className="size-4 animate-spin" />}
-              Ghi hoá đơn
+              {userIds.size > 1 ? `Ghi ${userIds.size} hoá đơn` : "Ghi hoá đơn"}
             </Button>
           </div>
         </CardContent>

@@ -21,6 +21,7 @@ import {
   getDayOrdersByPerson,
   getKitchenSummary,
 } from "@/db/queries/bookings";
+import { listManualBillsOn } from "@/db/queries/manual-bills";
 import { getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
 import { canManage, requireSection } from "@/lib/auth/session";
 import { SlotTabs, type SlotTab } from "@/components/menu/slot-tabs";
@@ -41,6 +42,8 @@ import {
   shiftServiceDate,
   todayServiceDate,
 } from "@/lib/date";
+import { fallbackDisplayName } from "@/lib/display-name";
+import { formatServiceTime } from "@/lib/manual-bill";
 import { formatVnd } from "@/lib/money";
 import { KITCHEN_SECTIONS as SECTIONS, summarizeKitchenBill } from "@/lib/kitchen-bill";
 import type { MenuItemCategory } from "@/db/schema";
@@ -62,11 +65,13 @@ export default async function AdminDayBookingsPage({
   const slot = parseMenuSlot(buoi);
   const today = todayServiceDate();
 
-  const [day, existingDays, diners] = await Promise.all([
+  const [day, existingDays, diners, manualBills] = await Promise.all([
     getMenuDay(date, slot),
     getMenuDaysForDate(date),
     getAllDiners(),
+    listManualBillsOn(date),
   ]);
+  const manualBillsTotalVnd = manualBills.reduce((total, bill) => total + bill.totalVnd, 0);
 
   // Every figure below belongs to one sitting. The lunch order and an afternoon
   // party go to the quán separately, so they are never summed: with no menu for
@@ -377,6 +382,88 @@ export default async function AdminDayBookingsPage({
                     </TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+      {/* Hand-written bills belong to the date, not a sitting, so both tabs show
+          them — and "Tải ảnh hóa đơn" draws them below the diners. They never
+          reach the quán's order above. */}
+      {manualBills.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-base">
+                Hoá đơn riêng
+                <span className="text-muted-foreground ml-2 text-sm font-normal">
+                  {manualBills.length} hoá đơn · {formatVnd(manualBillsTotalVnd)}
+                </span>
+              </CardTitle>
+              <div className="flex flex-wrap gap-2">
+                {canManage(viewer, "bills") && (
+                  <LinkButton href="/admin/bills" variant="outline" size="sm">
+                    Ghi hoá đơn
+                  </LinkButton>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Người trả</TableHead>
+                  <TableHead>Món</TableHead>
+                  <TableHead className="text-right">Số tiền</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {manualBills.map((bill) => {
+                  const name = bill.displayName ?? fallbackDisplayName(bill.email);
+                  return (
+                    <TableRow key={bill.id}>
+                      <TableCell className="align-top">
+                        <span className="font-medium">{name}</span>
+                        <span className="text-muted-foreground block text-xs">{bill.email}</span>
+                        {(bill.serviceTime || bill.title) && (
+                          <span className="text-muted-foreground block text-xs">
+                            {[formatServiceTime(bill.serviceTime), bill.title]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="align-top whitespace-normal">
+                        {bill.items
+                          .map((item) =>
+                            item.quantity > 1 ? `${item.name} x${item.quantity}` : item.name,
+                          )
+                          .join(", ")}
+                      </TableCell>
+                      <TableCell className="text-right align-top font-medium tabular-nums">
+                        {formatVnd(bill.totalVnd)}
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <Button
+                          nativeButton={false}
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Tải ảnh hoá đơn của ${name}`}
+                          render={
+                            <a
+                              href={`/admin/bookings/${date}/hoa-don-rieng?id=${bill.id}`}
+                              download
+                            />
+                          }
+                        >
+                          <ImageDown className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
