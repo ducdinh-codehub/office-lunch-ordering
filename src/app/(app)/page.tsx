@@ -7,6 +7,7 @@ import { LuckyEnvelope } from "@/components/lucky-envelope";
 import { MenuDayView } from "@/components/menu/menu-day-view";
 import { SlotSection } from "@/components/menu/slot-section";
 import { SeasonalBackdrop } from "@/components/themes/seasonal-backdrop";
+import { InvitationBanner } from "@/components/welcome/invitation-banner";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMenuDay } from "@/db/queries/menu";
 import { getUserBookingsForDay } from "@/db/queries/bookings";
@@ -25,6 +26,7 @@ import { BIRTHDAY_PERCENT, isBirthdayOn, toBirthday } from "@/lib/birthday";
 import { parseSelectedTier } from "@/lib/set-tiers";
 import { formatServiceDateShort, shiftServiceDate, todayServiceDate } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
+import { parseSchedule } from "@/lib/welcome-schedule";
 import { serverEnv } from "@/env";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +74,11 @@ export default async function TodayPage({
   const todayEntry = ledger.find((entry) => entry.serviceDate === today);
   const todayPaid = todayEntry?.state === "pending" || todayEntry?.state === "confirmed";
   const showEnvelope = settings.luckyEnvelopeEnabled && envelope === null && !todayPaid;
+
+  // The welcome screen's invitation, while it is on: signed-in people never
+  // pass /welcome again, so home is where they find it.
+  const showInvitation =
+    settings.welcomeEnabled && Boolean(settings.welcomeTitle || settings.welcomeMessage);
 
   const firstName = (user.displayName ?? user.email.split("@")[0]).split(" ")[0];
   const birthdayToday = isBirthdayOn(toBirthday(user.birthMonth, user.birthDay), today);
@@ -121,6 +128,13 @@ export default async function TodayPage({
         <GreetingBanner
           message={settings.greetingMessage}
           icon={greetingIcon(parseHomeTheme(settings.homeTheme))}
+        />
+      )}
+
+      {showInvitation && (
+        <InvitationBanner
+          title={settings.welcomeTitle}
+          schedule={parseSchedule(settings.welcomeSchedule)}
         />
       )}
 
