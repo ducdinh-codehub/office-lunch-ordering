@@ -2,26 +2,34 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/db";
 import { manualBillItems, manualBills, users } from "@/db/schema";
-import { getClaimedDates } from "@/db/queries/payments";
+import { getClaimedDates, getUsersClaimedOn } from "@/db/queries/payments";
 import { assertSection } from "@/lib/auth/session";
 import { isServiceDate } from "@/lib/date";
 import {
   MANUAL_BILL_ITEM_NAME_MAX,
   MANUAL_BILL_MAX_ITEMS,
+  MANUAL_BILL_MAX_PEOPLE,
   MANUAL_BILL_MAX_TOTAL_VND,
   MANUAL_BILL_MAX_UNIT_PRICE_VND,
   MANUAL_BILL_TITLE_MAX,
 } from "@/lib/manual-bill";
+import { fallbackDisplayName } from "@/lib/display-name";
 import { formatVnd } from "@/lib/money";
 import { actionOk, fail, toActionError, type ActionResult } from "@/lib/action-result";
 
 const manualBillSchema = z.object({
-  userId: z.string().uuid("Hãy chọn một người."),
+  // Each person gets a bill of their own with the same lines — one round of
+  // trà sữa written once for everyone who had it.
+  userIds: z
+    .array(z.string().uuid("Người được chọn không hợp lệ."))
+    .min(1, "Hãy chọn ít nhất một người.")
+    .max(MANUAL_BILL_MAX_PEOPLE, `Mỗi lần ghi tối đa ${MANUAL_BILL_MAX_PEOPLE} người.`)
+    .transform((ids) => [...new Set(ids)]),
   serviceDate: z.string().refine(isServiceDate, "Ngày không hợp lệ."),
   // A `<input type="time">` value, Vietnam wall-clock; empty means no time.
   serviceTime: z
@@ -60,26 +68,28 @@ const manualBillSchema = z.object({
     .max(MANUAL_BILL_MAX_ITEMS, `Mỗi hoá đơn tối đa ${MANUAL_BILL_MAX_ITEMS} món.`),
 });
 
-/** Every page a hand-written bill changes an amount on. */
+/** Every page a hand-written bill changes an amount on, or is listed on. */
 function revalidateMoneyPages() {
   revalidatePath("/");
   revalidatePath("/me/bookings");
   revalidatePath("/me/payments");
   revalidatePath("/admin/payments");
   revalidatePath("/admin/bills");
+  revalidatePath("/admin/bookings", "layout");
 }
 
 /**
- * Writes a bill for one person by hand: a date, an optional time, and lines
- * whose names and prices the admin types. It joins that date's total, so the
- * person pays it with the rest of the day. Refused on a day they already
- * claimed — that amount is fixed on the payments row.
+ * Writes a bill by hand for one or more people: a date, an optional time, and
+ * lines whose names and prices the admin types. Every person chosen gets their
+ * own bill with those lines — each joins that person's total for the date, so
+ * they pay it with the rest of the day. Refused as a whole if any of them
+ * already claimed that date — their amount is fixed on the payments row.
  */
 export async function createManualBill(input: unknown): Promise<ActionResult> {
   try {
     const user = await assertSection("bills");
 
-    const { userId, serviceDate, serviceTime, title, items } = manualBillSchema.parse(input);
+    const { userIds, serviceDate, serviceTime, title, items } = manualBillSchema.parse(input);
 
     // Recomputed here from the lines; nothing the client summed is trusted.
     const totalVnd = items.reduce((total, item) => total + item.quantity * item.unitPriceVnd, 0);
@@ -87,34 +97,43 @@ export async function createManualBill(input: unknown): Promise<ActionResult> {
       fail(`Một hoá đơn tối đa ${formatVnd(MANUAL_BILL_MAX_TOTAL_VND)}.`);
     }
 
-    const [member] = await db
-      .select({ id: users.id })
+    const members = await db
+      .select({ id: users.id, displayName: users.displayName, email: users.email })
       .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (!member) fail("Không tìm thấy người này.");
+      .where(inArray(users.id, userIds));
+    if (members.length !== userIds.length) fail("Không tìm thấy một người đã chọn.");
 
-    if ((await getClaimedDates(userId, [serviceDate])).size > 0) {
-      fail("Người này đã thanh toán ngày đó — chọn ngày khác cho hoá đơn.");
+    const claimed = await getUsersClaimedOn(userIds, serviceDate);
+    if (claimed.size > 0) {
+      const names = members
+        .filter((member) => claimed.has(member.id))
+        .map((member) => member.displayName || fallbackDisplayName(member.email));
+      fail(`${names.join(", ")} đã thanh toán ngày đó — bỏ chọn hoặc chọn ngày khác.`);
     }
 
     // Two inserts without a transaction (the Neon HTTP driver has none): if the
-    // lines fail, the empty bill is taken back rather than left at 0 ₫.
-    const billId = randomUUID();
-    await db.insert(manualBills).values({
-      id: billId,
-      userId,
-      serviceDate,
-      serviceTime,
-      title,
-      createdByUserId: user.id,
-    });
+    // lines fail, the empty bills are taken back rather than left at 0 ₫.
+    const billIds = userIds.map(() => randomUUID());
+    await db.insert(manualBills).values(
+      userIds.map((userId, index) => ({
+        id: billIds[index],
+        userId,
+        serviceDate,
+        serviceTime,
+        title,
+        createdByUserId: user.id,
+      })),
+    );
     try {
       await db
         .insert(manualBillItems)
-        .values(items.map((item, index) => ({ billId, ...item, sortOrder: index })));
+        .values(
+          billIds.flatMap((billId) =>
+            items.map((item, index) => ({ billId, ...item, sortOrder: index })),
+          ),
+        );
     } catch (cause) {
-      await db.delete(manualBills).where(eq(manualBills.id, billId));
+      await db.delete(manualBills).where(inArray(manualBills.id, billIds));
       throw cause;
     }
 

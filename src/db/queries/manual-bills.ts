@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { manualBillItems, manualBills, users } from "@/db/schema";
 import type { ServiceDate } from "@/lib/date";
+import { fallbackDisplayName } from "@/lib/display-name";
 
 export type ManualBillTotal = {
   userId: string;
@@ -160,4 +161,19 @@ export async function listManualBills(where: {
       totalVnd: items.reduce((total, line) => total + line.lineTotalVnd, 0),
     };
   });
+}
+
+/**
+ * One date's hand-written bills, ordered by person then time — how Đơn hàng
+ * lists them and how its image draws them, so the two read alike.
+ */
+export async function listManualBillsOn(date: ServiceDate): Promise<ManualBillDetail[]> {
+  const bills = await listManualBills({ from: date, to: date });
+  const nameOf = (bill: ManualBillDetail) => bill.displayName ?? fallbackDisplayName(bill.email);
+  return bills.sort(
+    (a, b) =>
+      nameOf(a).localeCompare(nameOf(b), "vi") ||
+      (a.serviceTime ?? "99").localeCompare(b.serviceTime ?? "99") ||
+      a.createdAt.getTime() - b.createdAt.getTime(),
+  );
 }

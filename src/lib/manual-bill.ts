@@ -3,6 +3,9 @@
 /** One bill is a receipt, not a ledger. */
 export const MANUAL_BILL_MAX_ITEMS = 30;
 
+/** How many people one form may write a bill for at once — a whole team, not a mailing list. */
+export const MANUAL_BILL_MAX_PEOPLE = 100;
+
 export const MANUAL_BILL_TITLE_MAX = 80;
 export const MANUAL_BILL_ITEM_NAME_MAX = 80;
 

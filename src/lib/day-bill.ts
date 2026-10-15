@@ -6,6 +6,7 @@ import {
   getKitchenSummary,
   getShipShares,
 } from "@/db/queries/bookings";
+import { listManualBillsOn, type ManualBillDetail } from "@/db/queries/manual-bills";
 import { getMenuDay } from "@/db/queries/menu";
 import { getPaymentRoster, type PaymentState } from "@/db/queries/payments";
 import { discountKey, getDayDiscounts } from "@/db/queries/day-discounts";
@@ -46,6 +47,14 @@ export type DayBill = {
   diners: DayBillDiner[];
   /** Sum of what the diners are charged; can differ from the quán's total. */
   dinersTotalVnd: number;
+  /**
+   * The date's hand-written bills. They belong to the date, not a sitting, so
+   * every sitting's bill carries all of them — listed apart, never summed into
+   * the diners' or the quán's total.
+   */
+  manualBills: ManualBillDetail[];
+  /** The date's payment state per person who has a hand-written bill. */
+  manualStates: Map<string, PaymentState>;
 };
 
 /**
@@ -64,14 +73,16 @@ export async function getDayBill(
   const day = await getMenuDay(date, slot);
   const menuDayId = day?.id;
 
-  const [kitchenLines, people, setOrders, roster, shipShares, discounts] = await Promise.all([
-    menuDayId ? getKitchenSummary(menuDayId) : [],
-    menuDayId ? getDayBookingsByPerson(menuDayId) : [],
-    menuDayId ? getDayOrdersByPerson(menuDayId) : [],
-    getPaymentRoster(date, date),
-    getShipShares({ dates: [date] }),
-    getDayDiscounts({ dates: [date] }),
-  ]);
+  const [kitchenLines, people, setOrders, roster, shipShares, discounts, manualBills] =
+    await Promise.all([
+      menuDayId ? getKitchenSummary(menuDayId) : [],
+      menuDayId ? getDayBookingsByPerson(menuDayId) : [],
+      menuDayId ? getDayOrdersByPerson(menuDayId) : [],
+      getPaymentRoster(date, date),
+      getShipShares({ dates: [date] }),
+      getDayDiscounts({ dates: [date] }),
+      listManualBillsOn(date),
+    ]);
 
   // A date with two sittings has a share per sitting; only this one's counts.
   const shipByUser = new Map(
@@ -128,5 +139,12 @@ export async function getDayBill(
     kitchen: summarizeKitchenBill(kitchenLines, setOrders, day?.shipFeeVnd ?? 0),
     diners: list,
     dinersTotalVnd: list.reduce((total, diner) => total + diner.totalVnd, 0),
+    manualBills,
+    manualStates: new Map(
+      manualBills.flatMap((bill) => {
+        const cell = cellByUser.get(bill.userId);
+        return cell ? [[bill.userId, cell.state] as const] : [];
+      }),
+    ),
   };
 }

@@ -28,8 +28,9 @@ export default async function AdminBillsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Hoá đơn riêng</h1>
         <p className="text-muted-foreground text-sm">
-          Ghi hoá đơn cho một người bằng tay — món và giá tự nhập. Hoá đơn cộng vào tiền của ngày
-          đó, người đó thấy ở Đơn của tôi và trả cùng mã QR.
+          Ghi hoá đơn bằng tay — món và giá tự nhập. Chọn nhiều người thì mỗi người nhận một hoá
+          đơn riêng với cùng các món. Hoá đơn cộng vào tiền của ngày đó, người đó thấy ở Đơn của tôi
+          và trả cùng mã QR; ảnh hoá đơn tải ở Đơn hàng của ngày đó.
         </p>
       </div>
 

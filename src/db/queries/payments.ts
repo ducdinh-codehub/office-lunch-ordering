@@ -369,6 +369,28 @@ export async function getPaymentsByIds(ids: string[]) {
 }
 
 /**
+ * Of these people, the ones who already claimed this date — the many-people
+ * counterpart of `getClaimedDates`, for a write that touches them all at once.
+ */
+export async function getUsersClaimedOn(
+  userIds: string[],
+  date: ServiceDate,
+): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const rows = await db
+    .select({ userId: payments.userId })
+    .from(payments)
+    .where(
+      and(
+        inArray(payments.userId, userIds),
+        eq(payments.serviceDate, date),
+        inArray(payments.status, ["pending", "confirmed"]),
+      ),
+    );
+  return new Set(rows.map((row) => row.userId));
+}
+
+/**
  * Dates in `dates` this person has already claimed (pending or confirmed).
  * Their amount is fixed on the payments row, so anything that would move it —
  * an admin discount, a hand-written bill — is refused on these.
