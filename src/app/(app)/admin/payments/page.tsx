@@ -2,6 +2,8 @@ import { LinkButton } from "@/components/ui/link-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PaymentRoster, type RosterRowData } from "@/components/admin/payment-roster";
 import { PendingClaims } from "@/components/admin/pending-claims";
+import { MonthPicker } from "@/components/admin/month-picker";
+import { getBillableDates } from "@/db/queries/menu";
 import { getPaymentRoster, getPendingClaims } from "@/db/queries/payments";
 import { requireSection } from "@/lib/auth/session";
 import {
@@ -22,6 +24,14 @@ type Range = { from: string; to: string; label: string };
 function resolveRange(from?: string, to?: string): Range {
   const today = todayServiceDate();
   if (isServiceDate(from) && isServiceDate(to) && from <= to) {
+    const month = monthBounds(from);
+    if (month.start === from && month.end === to) {
+      const label =
+        from === monthBounds(today).start
+          ? "Tháng này"
+          : `Tháng ${Number(from.slice(5, 7))}/${from.slice(0, 4)}`;
+      return { from, to, label };
+    }
     return { from, to, label: `${formatServiceDate(from)} → ${formatServiceDate(to)}` };
   }
   const month = monthBounds(today);
@@ -38,9 +48,11 @@ export default async function AdminPaymentsPage({
   const range = resolveRange(from, to);
   const today = todayServiceDate();
 
-  const [{ rows, dates }, claims] = await Promise.all([
+  const [{ rows, dates }, claims, billableDates] = await Promise.all([
     getPaymentRoster(range.from, range.to),
     getPendingClaims(),
+    // Which months the picker dots: about a year back and a few months ahead.
+    getBillableDates(shiftServiceDate(today, -400), shiftServiceDate(today, 100)),
   ]);
 
   // Maps don't survive the server → client boundary; flatten to plain objects.
@@ -66,15 +78,7 @@ export default async function AdminPaymentsPage({
     { billed: 0, collected: 0, pending: 0, outstanding: 0 },
   );
 
-  const lastMonth = monthBounds(shiftServiceDate(monthBounds(today).start, -1));
   const thisMonth = monthBounds(today);
-  const lastWeek = { start: shiftServiceDate(today, -6), end: today };
-
-  const presets: Array<{ label: string; from: string; to: string }> = [
-    { label: "7 ngày qua", from: lastWeek.start, to: lastWeek.end },
-    { label: "Tháng này", from: thisMonth.start, to: thisMonth.end },
-    { label: "Tháng trước", from: lastMonth.start, to: lastMonth.end },
-  ];
 
   return (
     <div className="space-y-5">
@@ -84,19 +88,21 @@ export default async function AdminPaymentsPage({
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {presets.map((preset) => {
-          const isActive = preset.from === range.from && preset.to === range.to;
-          return (
-            <LinkButton
-              key={preset.label}
-              href={`/admin/payments?from=${preset.from}&to=${preset.to}`}
-              size="sm"
-              variant={isActive ? "default" : "outline"}
-            >
-              {preset.label}
-            </LinkButton>
-          );
-        })}
+        <LinkButton
+          href={`/admin/payments?from=${thisMonth.start}&to=${thisMonth.end}`}
+          size="sm"
+          variant={
+            range.from === thisMonth.start && range.to === thisMonth.end ? "default" : "outline"
+          }
+        >
+          Tháng này
+        </LinkButton>
+        <MonthPicker
+          from={range.from}
+          to={range.to}
+          today={today}
+          markedDates={billableDates}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
