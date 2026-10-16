@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DayCalendar } from "@/components/admin/day-calendar";
 import { CopyKitchenList } from "@/components/admin/copy-kitchen-list";
 import { OrderForUser } from "@/components/admin/order-for-user";
 import { MenuDayView } from "@/components/menu/menu-day-view";
@@ -22,7 +23,7 @@ import {
   getKitchenSummary,
 } from "@/db/queries/bookings";
 import { listManualBillsOn } from "@/db/queries/manual-bills";
-import { getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
+import { getBillableDates, getMenuDay, getMenuDaysForDate } from "@/db/queries/menu";
 import { canManage, requireSection } from "@/lib/auth/session";
 import { SlotTabs, type SlotTab } from "@/components/menu/slot-tabs";
 import { parseSelectedTier } from "@/lib/set-tiers";
@@ -37,7 +38,6 @@ import {
 import { getAllDiners } from "@/db/queries/users";
 import {
   formatServiceDate,
-  formatServiceDateShort,
   isServiceDate,
   shiftServiceDate,
   todayServiceDate,
@@ -65,11 +65,13 @@ export default async function AdminDayBookingsPage({
   const slot = parseMenuSlot(buoi);
   const today = todayServiceDate();
 
-  const [day, existingDays, diners, manualBills] = await Promise.all([
+  const [day, existingDays, diners, manualBills, billableDates] = await Promise.all([
     getMenuDay(date, slot),
     getMenuDaysForDate(date),
     getAllDiners(),
     listManualBillsOn(date),
+    // Enough for the calendar to page a year back and a couple of months ahead.
+    getBillableDates(shiftServiceDate(today, -400), shiftServiceDate(today, 100)),
   ]);
   const manualBillsTotalVnd = manualBills.reduce((total, bill) => total + bill.totalVnd, 0);
 
@@ -180,20 +182,19 @@ export default async function AdminDayBookingsPage({
 
       {/* The nav tab lands on today, so days are switched from here. */}
       <div className="flex flex-wrap gap-1.5">
-        {[-1, 0, 1, 2].map((offset) => {
-          const target = shiftServiceDate(today, offset);
-          const label = offset === 0 ? "Hôm nay" : formatServiceDateShort(target);
-          return (
-            <LinkButton
-              key={target}
-              href={withSlot(`/admin/bookings/${target}`, slot)}
-              size="sm"
-              variant={target === date ? "default" : "outline"}
-            >
-              {label}
-            </LinkButton>
-          );
-        })}
+        <LinkButton
+          href={withSlot(`/admin/bookings/${today}`, slot)}
+          size="sm"
+          variant={today === date ? "default" : "outline"}
+        >
+          Hôm nay
+        </LinkButton>
+        <DayCalendar
+          selectedDate={date}
+          today={today}
+          markedDates={billableDates}
+          slot={slot}
+        />
       </div>
 
       <SlotTabs tabs={tabs} activeSlot={slot} />
