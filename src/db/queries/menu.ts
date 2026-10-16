@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { db } from "@/db";
-import { menuDays, menuItems, type MenuDay, type MenuItem } from "@/db/schema";
+import { manualBills, menuDays, menuItems, type MenuDay, type MenuItem } from "@/db/schema";
 import { DEFAULT_SLOT, MENU_SLOTS, type MenuSlot } from "@/lib/menu-slot";
 import type { ServiceDate } from "@/lib/date";
 
@@ -62,6 +62,27 @@ export async function getAllMenuDays(limit = 60): Promise<MenuDay[]> {
     orderBy: [desc(menuDays.serviceDate), asc(menuDays.slot)],
     limit,
   });
+}
+
+/**
+ * Dates in a range that have something to bill — a menu in either sitting
+ * (drafts included) or a hand-written bill. What the Đơn hàng calendar marks.
+ */
+export async function getBillableDates(
+  from: ServiceDate,
+  to: ServiceDate,
+): Promise<ServiceDate[]> {
+  const [menus, bills] = await Promise.all([
+    db
+      .selectDistinct({ serviceDate: menuDays.serviceDate })
+      .from(menuDays)
+      .where(and(gte(menuDays.serviceDate, from), lte(menuDays.serviceDate, to))),
+    db
+      .selectDistinct({ serviceDate: manualBills.serviceDate })
+      .from(manualBills)
+      .where(and(gte(manualBills.serviceDate, from), lte(manualBills.serviceDate, to))),
+  ]);
+  return [...new Set([...menus, ...bills].map((row) => row.serviceDate))].sort();
 }
 
 /** True while users may still book or cancel for this day. */
