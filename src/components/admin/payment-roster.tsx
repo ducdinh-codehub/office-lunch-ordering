@@ -9,6 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   deleteDayOrder,
   markPaidByAdmin,
   unmarkPaid,
@@ -62,27 +71,50 @@ export function PaymentRoster({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
-  // Cells are small and deletion is permanent, so the first tap only arms the
-  // cell; the second one deletes. Anything else disarms it.
+  // Deletion is permanent, so the first tap on "Xoá đơn" only arms it; the
+  // second one deletes. Closing the menu disarms it.
   const [armed, setArmed] = useState<string | null>(null);
 
   function cellKey(userId: string, date: string) {
     return `${userId}:${date}`;
   }
 
-  function handleCellClick(row: RosterRowData, date: string) {
-    const key = cellKey(row.userId, date);
-    if (armed !== key) {
-      setArmed(key);
-      return;
-    }
-
+  function deleteDay(row: RosterRowData, date: string) {
     setArmed(null);
     setActiveUserId(row.userId);
     startTransition(async () => {
       const result = await deleteDayOrder({ userId: row.userId, serviceDate: date });
       if (result.ok) {
         toast.success(`Đã xoá đơn ngày ${formatServiceDateShort(date)}.`);
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+      setActiveUserId(null);
+    });
+  }
+
+  /** One day only — e.g. someone paid the 15th but forgot the 14th. */
+  function settleDay(row: RosterRowData, date: string) {
+    setActiveUserId(row.userId);
+    startTransition(async () => {
+      const result = await markPaidByAdmin({ userId: row.userId, serviceDates: [date] });
+      if (result.ok) {
+        toast.success(`Đã đánh dấu ngày ${formatServiceDateShort(date)} là đã trả.`);
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+      setActiveUserId(null);
+    });
+  }
+
+  function undoDay(row: RosterRowData, date: string) {
+    setActiveUserId(row.userId);
+    startTransition(async () => {
+      const result = await unmarkPaid({ userId: row.userId, serviceDates: [date] });
+      if (result.ok) {
+        toast.success(`Đã đặt lại ngày ${formatServiceDateShort(date)} thành chưa trả.`);
         router.refresh();
       } else {
         toast.error(result.error);
@@ -200,28 +232,53 @@ export function PaymentRoster({
                       return (
                         <td key={date} className="px-1 py-1.5 text-center">
                           {cell ? (
-                            <button
-                              type="button"
-                              disabled={isPending}
-                              onClick={() => handleCellClick(row, date)}
-                              onBlur={() => setArmed(null)}
-                              title={
-                                armed === cellKey(row.userId, date)
-                                  ? "Bấm lần nữa để xoá đơn ngày này"
-                                  : `${formatVnd(cell.owedVnd)} · ${stateLabel[cell.state]}`
-                              }
-                              className={`inline-flex h-7 min-w-9 items-center justify-center rounded px-1.5 text-xs font-medium transition-colors ${
-                                armed === cellKey(row.userId, date)
-                                  ? "bg-destructive text-white"
-                                  : cellStyle[cell.state]
-                              }`}
+                            <DropdownMenu
+                              onOpenChange={(open) => {
+                                if (!open) setArmed(null);
+                              }}
                             >
-                              {armed === cellKey(row.userId, date) ? (
-                                <Trash2 className="size-3.5" />
-                              ) : (
-                                cellMark[cell.state]
-                              )}
-                            </button>
+                              <DropdownMenuTrigger
+                                disabled={isPending}
+                                title={`${formatVnd(cell.owedVnd)} · ${stateLabel[cell.state]}`}
+                                className={`inline-flex h-7 min-w-9 items-center justify-center rounded px-1.5 text-xs font-medium transition-colors ${cellStyle[cell.state]}`}
+                              >
+                                {cellMark[cell.state]}
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent className="w-auto min-w-48">
+                                <DropdownMenuGroup>
+                                  <DropdownMenuLabel>
+                                    {formatServiceDateShort(date)} · {formatVnd(cell.owedVnd)} ·{" "}
+                                    {stateLabel[cell.state]}
+                                  </DropdownMenuLabel>
+                                </DropdownMenuGroup>
+                                {cell.state === "confirmed" ? (
+                                  <DropdownMenuItem onClick={() => undoDay(row, date)}>
+                                    <Undo2 />
+                                    Đặt lại chưa trả
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => settleDay(row, date)}>
+                                    <Check />
+                                    Đánh dấu ngày này đã trả
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  closeOnClick={armed === cellKey(row.userId, date)}
+                                  onClick={() => {
+                                    const key = cellKey(row.userId, date);
+                                    if (armed !== key) setArmed(key);
+                                    else deleteDay(row, date);
+                                  }}
+                                >
+                                  <Trash2 />
+                                  {armed === cellKey(row.userId, date)
+                                    ? "Bấm lần nữa để xoá"
+                                    : "Xoá đơn ngày này"}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           ) : (
                             <span className="text-muted-foreground/40 text-xs">·</span>
                           )}
