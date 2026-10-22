@@ -25,6 +25,7 @@ import {
 import { formatServiceDateShort } from "@/lib/date";
 import { formatVnd } from "@/lib/money";
 import type { PaymentState } from "@/db/queries/payments";
+import { DownloadRosterImage } from "@/components/admin/download-roster-image";
 
 /** Serialisable shape — `Map` can't cross the server/client boundary. */
 export type RosterRowData = {
@@ -64,9 +65,15 @@ const cellMark: Record<PaymentState, string> = {
 export function PaymentRoster({
   rows,
   dates,
+  rangeLabel,
+  rangeKey,
 }: {
   rows: RosterRowData[];
   dates: string[];
+  /** Shown under the title of the downloaded picture, e.g. "Tháng 10/2026". */
+  rangeLabel: string;
+  /** Names the downloaded file, e.g. "2026-10-01_2026-10-31". */
+  rangeKey: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -180,9 +187,18 @@ export function PaymentRoster({
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">Ai đã trả</CardTitle>
-          <Badge variant={settledCount === rows.length ? "default" : "secondary"}>
-            {settledCount}/{rows.length} đã trả đủ
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={settledCount === rows.length ? "default" : "secondary"}>
+              {settledCount}/{rows.length} đã trả đủ
+            </Badge>
+            <DownloadRosterImage
+              rows={rows}
+              dates={dates}
+              title={`Bảng thu tiền · ${rangeLabel}`}
+              subtitle={`${settledCount}/${rows.length} người đã trả đủ`}
+              fileName={`bang-thu-tien_${rangeKey}.png`}
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent>

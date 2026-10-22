@@ -123,7 +123,12 @@ export default async function AdminPaymentsPage({
 
       <PendingClaims claims={claims} />
 
-      <PaymentRoster rows={rosterRows} dates={dates} />
+      <PaymentRoster
+        rows={rosterRows}
+        dates={dates}
+        rangeLabel={range.label}
+        rangeKey={`${range.from}_${range.to}`}
+      />
     </div>
   );
 }
