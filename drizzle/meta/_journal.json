@@ -176,6 +176,13 @@
       "when": 1791902851118,
       "tag": "0024_admin_sections",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793672540807,
+      "tag": "0025_last_seen",
+      "breakpoints": true
     }
   ]
 }

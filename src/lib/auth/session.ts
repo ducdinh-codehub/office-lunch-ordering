@@ -2,6 +2,7 @@ import "server-only";
 
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 
@@ -55,7 +56,10 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const existing = await db.query.users.findFirst({
     where: eq(users.clerkUserId, clerkUserId),
   });
-  if (existing) return toSessionUser(existing);
+  if (existing) {
+    touchLastSeen(existing);
+    return toSessionUser(existing);
+  }
 
   // First request after signing up: pull the profile from Clerk and store it.
   const clerkUser = await currentUser();
@@ -69,6 +73,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
       email,
       displayName: clerkUser.fullName,
       photoUrl: clerkUser.imageUrl,
+      lastSeenAt: new Date(),
     })
     .onConflictDoUpdate({
       // A person who signs up again with the same address keeps one row, now
@@ -78,12 +83,33 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
         clerkUserId,
         displayName: clerkUser.fullName,
         photoUrl: clerkUser.imageUrl,
+        lastSeenAt: new Date(),
       },
     })
     .returning();
 
   return toSessionUser(created);
 });
+
+/** How stale `last_seen_at` may get before a request writes it again. */
+const LAST_SEEN_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Records that this person is using the app, at most once per interval so a
+ * page load does not cost a write. It runs after the response (`after()`), and
+ * a failure is only logged: "last seen" is a nicety, never worth a failed page.
+ */
+function touchLastSeen(row: User) {
+  const now = new Date();
+  if (row.lastSeenAt && now.getTime() - row.lastSeenAt.getTime() < LAST_SEEN_INTERVAL_MS) return;
+  after(async () => {
+    try {
+      await db.update(users).set({ lastSeenAt: now }).where(eq(users.id, row.id));
+    } catch (error) {
+      console.error("Could not record last_seen_at", error);
+    }
+  });
+}
 
 /** Use at the top of every protected page and every Server Action. */
 export async function requireUser(): Promise<SessionUser> {
