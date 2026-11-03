@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DishNote } from "@/components/menu/dish-note";
 import { setBooking } from "@/app/(app)/menu/actions";
 import { formatVnd } from "@/lib/money";
 
@@ -22,12 +23,14 @@ export type MenuItemRowProps = {
     isAvailable: boolean;
   };
   quantity: number;
+  /** The diner's note on this dish, when they have ordered it. */
+  note: string | null;
   canBook: boolean;
   /** Set when an admin is ordering for someone else. */
   onBehalfOf?: string;
 };
 
-export function MenuItemRow({ item, quantity, canBook, onBehalfOf }: MenuItemRowProps) {
+export function MenuItemRow({ item, quantity, note, canBook, onBehalfOf }: MenuItemRowProps) {
   // Optimistic local count so tapping +/- feels instant.
   const [count, setCount] = useState(quantity);
   const [isPending, startTransition] = useTransition();
@@ -88,6 +91,19 @@ export function MenuItemRow({ item, quantity, canBook, onBehalfOf }: MenuItemRow
             </span>
           )}
         </p>
+        {/* Keyed on the saved booking, not the optimistic count: a note needs a
+            row to land on, and the first tap's row may not be written yet. */}
+        {quantity > 0 && count > 0 && (
+          <div className="mt-1.5">
+            <DishNote
+              menuItemId={item.id}
+              dishName={item.name}
+              note={note}
+              canEdit={canBook}
+              onBehalfOf={onBehalfOf}
+            />
+          </div>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">

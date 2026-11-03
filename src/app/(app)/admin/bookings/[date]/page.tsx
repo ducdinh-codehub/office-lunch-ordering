@@ -109,6 +109,10 @@ export default async function AdminDayBookingsPage({
   const linesFor = (categories: MenuItemCategory[]) =>
     ordered.filter((line) => categories.includes(line.category));
 
+  const nameOf = (row: { displayName: string | null; email: string }) =>
+    row.displayName ?? row.email.split("@")[0];
+  const notedLines = people.filter((row) => row.note);
+
   // What gets pasted into the chat with the quán.
   const kitchenText = [
     `${SLOT_ORDER_LABEL[slot]} — ${formatServiceDate(date)}`,
@@ -120,6 +124,15 @@ export default async function AdminDayBookingsPage({
       if (lines.length === 0) return [];
       return [``, `${label}:`, ...lines.map((line) => `${line.totalQuantity}x ${line.itemName}`)];
     }),
+    // The quán cooks per dish, so a diner's "ít cay" has to reach them too —
+    // named, so they know which portion it is.
+    ...(notedLines.length > 0
+      ? [
+          ``,
+          `Ghi chú:`,
+          ...notedLines.map((row) => `- ${row.itemName}: ${row.note} (${nameOf(row)})`),
+        ]
+      : []),
     ``,
     ...(shipFeeVnd > 0 ? [`Phí ship: ${formatVnd(shipFeeVnd)}`] : []),
     `Tổng: ${formatVnd(totalVnd)}`,
@@ -130,10 +143,11 @@ export default async function AdminDayBookingsPage({
   const byPerson = new Map<string, { name: string; dishes: string[] }>();
   for (const row of people) {
     const entry = byPerson.get(row.userId) ?? {
-      name: row.displayName ?? row.email.split("@")[0],
+      name: nameOf(row),
       dishes: [],
     };
-    entry.dishes.push(row.quantity > 1 ? `${row.itemName} x${row.quantity}` : row.itemName);
+    const dish = row.quantity > 1 ? `${row.itemName} x${row.quantity}` : row.itemName;
+    entry.dishes.push(row.note ? `${dish} [${row.note}]` : dish);
     byPerson.set(row.userId, entry);
   }
 
@@ -366,13 +380,15 @@ export default async function AdminDayBookingsPage({
                       <span className="text-muted-foreground block text-xs">
                         {person.email}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      {person.itemName}
                       {person.note && (
                         <span className="text-muted-foreground block text-xs">
-                          {person.note}
+                          Ghi chú: {person.note}
                         </span>
                       )}
                     </TableCell>
-                    <TableCell>{person.itemName}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {person.quantity}
                     </TableCell>
