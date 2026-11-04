@@ -1,6 +1,6 @@
 import "server-only";
 
-import { asc } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -48,4 +48,35 @@ export async function getAllMembers(): Promise<Member[]> {
     })
     .from(users)
     .orderBy(asc(users.displayName), asc(users.email));
+}
+
+export type MemberActivity = {
+  id: string;
+  name: string;
+  email: string;
+  photoUrl: string | null;
+  /** The first sign-in: the row is created then. */
+  createdAt: Date;
+  /** Null when not seen since tracking began. */
+  lastSeenAt: Date | null;
+};
+
+/** Everyone, most recently active first — for the full admin's Hoạt động page. */
+export async function getMemberActivity(): Promise<MemberActivity[]> {
+  const rows = await db
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      email: users.email,
+      photoUrl: users.photoUrl,
+      createdAt: users.createdAt,
+      lastSeenAt: users.lastSeenAt,
+    })
+    .from(users)
+    .orderBy(sql`${users.lastSeenAt} desc nulls last`, asc(users.email));
+
+  return rows.map(({ displayName, ...row }) => ({
+    ...row,
+    name: displayName ?? fallbackDisplayName(row.email),
+  }));
 }
