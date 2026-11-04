@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DishNote } from "@/components/menu/dish-note";
 import { toggleSetDish } from "@/app/(app)/menu/actions";
 
 export type SetDishRowProps = {
@@ -16,6 +17,8 @@ export type SetDishRowProps = {
     isAvailable: boolean;
   };
   selected: boolean;
+  /** The diner's note on this dish, when they have picked it. */
+  note: string | null;
   /** False once the category's quota is full and this dish isn't one of the picks. */
   canSelect: boolean;
   canBook: boolean;
@@ -31,6 +34,7 @@ export type SetDishRowProps = {
 export function SetDishRow({
   item,
   selected,
+  note,
   canSelect,
   canBook,
   onBehalfOf,
@@ -71,31 +75,51 @@ export function SetDishRow({
     });
   }
 
+  // The note sits outside the <label>: inside it, every click on the note's
+  // input or buttons would also toggle the checkbox.
   return (
-    <label
-      className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
+    <div
+      className={`rounded-lg border transition-colors ${
         checked ? "border-primary/40 bg-primary/5" : "bg-background"
-      } ${disabled ? "cursor-not-allowed opacity-60" : "hover:bg-accent/50 cursor-pointer"}`}
+      }`}
     >
-      {isPending ? (
-        <Loader2 className="size-4 shrink-0 animate-spin" />
-      ) : (
-        <Checkbox checked={checked} disabled={disabled} onCheckedChange={toggle} />
-      )}
+      <label
+        className={`flex items-center gap-3 rounded-lg p-3 ${
+          disabled ? "cursor-not-allowed opacity-60" : "hover:bg-accent/50 cursor-pointer"
+        }`}
+      >
+        {isPending ? (
+          <Loader2 className="size-4 shrink-0 animate-spin" />
+        ) : (
+          <Checkbox checked={checked} disabled={disabled} onCheckedChange={toggle} />
+        )}
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{item.name}</span>
-          {soldOut && (
-            <Badge variant="secondary" className="text-xs">
-              Hết món
-            </Badge>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">{item.name}</span>
+            {soldOut && (
+              <Badge variant="secondary" className="text-xs">
+                Hết món
+              </Badge>
+            )}
+          </div>
+          {item.description && (
+            <p className="text-muted-foreground mt-0.5 text-sm">{item.description}</p>
           )}
         </div>
-        {item.description && (
-          <p className="text-muted-foreground mt-0.5 text-sm">{item.description}</p>
-        )}
-      </div>
-    </label>
+      </label>
+      {/* The saved pick, not the optimistic tick: a note needs a row to land on. */}
+      {selected && checked && (
+        <div className="-mt-1.5 px-3 pb-3 pl-10">
+          <DishNote
+            menuItemId={item.id}
+            dishName={item.name}
+            note={note}
+            canEdit={canBook}
+            onBehalfOf={onBehalfOf}
+          />
+        </div>
+      )}
+    </div>
   );
 }
