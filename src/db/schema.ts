@@ -120,6 +120,10 @@ export const users = pgTable(
     // migration; a value the code no longer knows grants nothing. ADMIN_EMAILS
     // hold every section whatever this says.
     adminSections: text("admin_sections").array().notNull().default(sql`'{}'`),
+    // The last request this person made, to the nearest few minutes — the
+    // write is throttled in `getCurrentUser()`. Shown to full admins only.
+    // Null for anyone not seen since the column was added.
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

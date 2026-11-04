@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Activity,
   CalendarDays,
   ChevronDown,
   ClipboardList,
@@ -44,6 +45,7 @@ const ICONS: Record<string, LucideIcon> = {
   "/admin/bills": NotebookPen,
   "/admin/emails": Mail,
   "/admin/settings": Settings2,
+  "/admin/activity": Activity,
 };
 
 /**

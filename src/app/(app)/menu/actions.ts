@@ -10,6 +10,7 @@ import { isBookingOpen, bookingClosedReason } from "@/db/queries/menu";
 import { getSetSelectionCounts, syncDayOrder } from "@/db/queries/bookings";
 import { maxSetPicks, offersSet, resolveSetTier, setTiers } from "@/lib/set-tiers";
 import { canManage, getCurrentUser, type SessionUser } from "@/lib/auth/session";
+import { DISH_NOTE_MAX } from "@/lib/dish-note";
 import {
   actionOk,
   fail,
@@ -26,7 +27,7 @@ const bookSchema = z.object({
   // safety: quantity × unit price has to stay inside a 32-bit integer, which is
   // the invariant that keeps money exact.
   quantity: z.number().int().min(0).max(99),
-  note: z.string().trim().max(200).optional(),
+  note: z.string().trim().max(DISH_NOTE_MAX).optional(),
 });
 
 const toggleSchema = z.object({
@@ -90,6 +91,49 @@ async function loadItem(menuItemId: string) {
     .innerJoin(menuDays, eq(menuDays.id, menuItems.menuDayId))
     .where(eq(menuItems.id, menuItemId))
     .then((rows) => rows[0]);
+}
+
+const noteSchema = z.object({
+  menuItemId: z.string().uuid(),
+  onBehalfOf: z.string().uuid().optional(),
+  // Blank clears it. Matches the bound on `setBooking`'s note.
+  note: z.string().trim().max(DISH_NOTE_MAX),
+});
+
+/**
+ * Writes the diner's own note on a dish they ordered — "ít cay", "không hành" —
+ * for the quán to read on the kitchen list. Any dish, suất or not.
+ *
+ * A note belongs to a booking, so there must be one: dropping the dish drops
+ * its note with it. It follows the same cutoff as the order itself, since the
+ * list has gone to the quán by then; ordering on someone's behalf lifts it.
+ */
+export async function setBookingNote(input: unknown): Promise<ActionResult> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) fail("Bạn đã đăng xuất. Vui lòng đăng nhập lại.");
+
+    const { menuItemId, note, onBehalfOf } = noteSchema.parse(input);
+    const diner = await resolveDiner(user, onBehalfOf);
+
+    const item = await loadItem(menuItemId);
+    if (!item) fail("Món này không còn trong thực đơn.");
+    if (!diner.overrideCutoff && !isBookingOpen(item)) {
+      fail(bookingClosedReason(item) ?? "Ngày này đã đóng đặt món.");
+    }
+
+    const updated = await db
+      .update(bookings)
+      .set({ note: note || null, updatedAt: new Date() })
+      .where(and(eq(bookings.userId, diner.userId), eq(bookings.menuItemId, menuItemId)))
+      .returning({ id: bookings.id });
+    if (updated.length === 0) fail("Hãy chọn món này trước khi ghi chú.");
+
+    revalidateFor(item.serviceDate);
+    return actionOk();
+  } catch (cause) {
+    return toActionError(cause, "Không lưu được ghi chú.");
+  }
 }
 
 function revalidateFor(serviceDate: string) {
@@ -302,7 +346,8 @@ export async function setBooking(input: unknown): Promise<ActionResult> {
           target: [bookings.userId, bookings.menuItemId],
           set: {
             quantity,
-            note: note || null,
+            // Tapping +/− sends no note; that must not wipe the one the diner wrote.
+            ...(note !== undefined ? { note: note || null } : {}),
             status: "booked",
             updatedAt: new Date(),
           },

@@ -92,6 +92,7 @@ export async function MenuDayView({
   const shipDinerCount = shipShares.length;
 
   const quantityByItem = new Map(myBookings.map((b) => [b.menuItemId, b.quantity]));
+  const noteByItem = new Map(myBookings.map((b) => [b.menuItemId, b.note]));
   const paidTotal = myBookings.reduce((total, b) => total + b.lineTotalVnd, 0);
 
   const canBook = day ? isBookingOpen(day) || Boolean(onBehalfOf) : false;
@@ -249,6 +250,7 @@ export async function MenuDayView({
                       key={item.id}
                       item={item}
                       selected={quantityByItem.has(item.id)}
+                      note={noteByItem.get(item.id) ?? null}
                       canSelect={!full}
                       canBook={canBook}
                       onBehalfOf={onBehalfOf}
@@ -270,6 +272,7 @@ export async function MenuDayView({
                 key={item.id}
                 item={item}
                 quantity={quantityByItem.get(item.id) ?? 0}
+                note={noteByItem.get(item.id) ?? null}
                 canBook={canBook}
                 onBehalfOf={onBehalfOf}
               />
@@ -315,6 +318,7 @@ export async function MenuDayView({
                   key={item.id}
                   item={item}
                   quantity={quantityByItem.get(item.id) ?? 0}
+                  note={noteByItem.get(item.id) ?? null}
                   canBook={canBook}
                   onBehalfOf={onBehalfOf}
                 />

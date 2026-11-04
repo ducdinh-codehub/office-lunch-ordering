@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  Activity,
   CalendarDays,
   ClipboardList,
   Flag,
@@ -11,10 +12,11 @@ import {
   Wallet,
 } from "lucide-react";
 
-import { SignOutButton } from "./sign-out-button";
+import { UserMenu } from "./user-menu";
 import { MobileNav } from "./mobile-nav";
 import { DonateButton } from "./donate-button";
 import { APP_SHORT_NAME } from "@/lib/app-name";
+import { fallbackDisplayName } from "@/lib/display-name";
 import { ADMIN_SECTION_INFO, type AdminSection } from "@/lib/admin-sections";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -53,6 +55,8 @@ export function AppShell({
     label: ADMIN_SECTION_INFO[section].label,
     icon: adminIcons[section],
   }));
+  // Who uses the app and when is not a section anyone can be handed: full admins only.
+  if (user.isAdmin) adminLinks.push({ href: "/admin/activity", label: "Hoạt động", icon: Activity });
 
   return (
     <div className="bg-muted/30 min-h-dvh">
@@ -102,30 +106,13 @@ export function AppShell({
             )}
           </nav>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {/* The way in to the profile, on every screen size — so it is still
-                reachable when the account has no avatar to click. */}
-            <Link
-              href="/me/profile"
-              title="Hồ sơ của bạn"
-              className="hover:ring-ring rounded-full transition-shadow hover:ring-2"
-            >
-              {user.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.photoUrl}
-                  alt="Hồ sơ của bạn"
-                  className="size-7 rounded-full"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-full text-xs font-medium">
-                  {(user.displayName ?? user.email).slice(0, 1).toUpperCase()}
-                </span>
-              )}
-            </Link>
-            <SignOutButton redirectUrl={signOutUrl} />
-          </div>
+          {/* Profile and sign-out live behind the avatar, on every screen size. */}
+          <UserMenu
+            name={user.displayName || fallbackDisplayName(user.email)}
+            email={user.email}
+            photoUrl={user.photoUrl}
+            signOutUrl={signOutUrl}
+          />
         </div>
       </header>
 
